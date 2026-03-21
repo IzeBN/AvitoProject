@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
     "build": "tsc && vite build",
-    "build:web": "tsc && vite build --mode web",
+    "build:web": "vite build --mode web",
     "tauri": "tauri"
   },
   "dependencies": {
