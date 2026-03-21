@@ -26,9 +26,6 @@ const AUTO_TYPE_LABELS: Record<string, string> = {
 }
 
 
-
-
-
 // ---- Debounced textarea для default messages ----
 function DefaultMessageTextarea({
   accountId,
