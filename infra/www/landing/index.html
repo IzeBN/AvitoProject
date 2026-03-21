@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>responsCRM — CRM для работы с кандидатами Avito</title>
+  <meta name="description" content="responsCRM — удобная CRM-система для автоматизации работы с кандидатами через Avito. Управляйте откликами, сообщениями и воронкой найма в одном месте." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --c-bg: #0f0f13;
+      --c-surface: #18181f;
+      --c-border: #2a2a35;
+      --c-accent: #6c63ff;
+      --c-accent-hover: #7d75ff;
+      --c-text: #f0f0f5;
+      --c-text-secondary: #9090a8;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--c-bg);
+      color: var(--c-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* NAV */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 48px;
+      border-bottom: 1px solid var(--c-border);
+    }
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--c-text);
+      text-decoration: none;
+      letter-spacing: -0.3px;
+    }
+    .logo span { color: var(--c-accent); }
+    .nav-cta {
+      background: var(--c-accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: var(--c-accent-hover); }
+
+    /* HERO */
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 80px 24px 60px;
+      gap: 28px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(108, 99, 255, 0.12);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: var(--c-accent);
+      font-weight: 500;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1.5px;
+      max-width: 760px;
+    }
+    .hero h1 span { color: var(--c-accent); }
+    .hero p {
+      font-size: 18px;
+      color: var(--c-text-secondary);
+      max-width: 540px;
+      line-height: 1.65;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn-primary {
+      background: var(--c-accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-primary:hover { background: var(--c-accent-hover); transform: translateY(-1px); }
+    .btn-secondary {
+      background: transparent;
+      color: var(--c-text);
+      border: 1px solid var(--c-border);
+      border-radius: 10px;
+      padding: 14px 32px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--c-accent); }
+
+    /* FEATURES */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+    .card {
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius);
+      padding: 28px;
+    }
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+    }
+    .card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .card p {
+      font-size: 14px;
+      color: var(--c-text-secondary);
+      line-height: 1.6;
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--c-border);
+      padding: 24px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    footer span { font-size: 13px; color: var(--c-text-secondary); }
+    footer a { color: var(--c-text-secondary); text-decoration: none; font-size: 13px; }
+    footer a:hover { color: var(--c-text); }
+
+    @media (max-width: 600px) {
+      nav { padding: 16px 20px; }
+      footer { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="logo" href="/">respons<span>CRM</span></a>
+    <a class="nav-cta" href="https://app.responscrm.ru">Войти</a>
+  </nav>
+
+  <section class="hero">
+    <div class="badge">🚀 CRM для рекрутинга через Avito</div>
+    <h1>Автоматизируйте найм<br>с <span>responsCRM</span></h1>
+    <p>Управляйте откликами, сообщениями и воронкой кандидатов из Avito в одном удобном интерфейсе. Никакой ручной работы — только результат.</p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="https://app.responscrm.ru">Начать бесплатно</a>
+      <a class="btn-secondary" href="mailto:hello@responscrm.ru">Связаться с нами</a>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="card">
+      <div class="card-icon">💬</div>
+      <h3>Единый мессенджер</h3>
+      <p>Все сообщения с Avito аккаунтов в одном окне. Быстрый ответ, история переписки и метки для каждого кандидата.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📊</div>
+      <h3>Воронка кандидатов</h3>
+      <p>Kanban-доска с настраиваемыми этапами. Отслеживайте каждого кандидата от первого отклика до выхода на работу.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <h3>Авто-ответы</h3>
+      <p>Мгновенные ответы на новые отклики по шаблонам. Экономьте время HR и не теряйте кандидатов из-за задержки ответа.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🏢</div>
+      <h3>Мультиаккаунт</h3>
+      <p>Подключайте несколько Avito аккаунтов и распределяйте кандидатов по отделам и менеджерам.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📈</div>
+      <h3>Аналитика</h3>
+      <p>Дашборд с ключевыми метриками: время ответа, конверсия откликов, эффективность менеджеров.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔔</div>
+      <h3>Уведомления</h3>
+      <p>Мгновенные вебхук-уведомления о новых сообщениях и откликах. Ничего не пропустите.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 2025 responsCRM. Все права защищены.</span>
+    <a href="mailto:hello@responscrm.ru">hello@responscrm.ru</a>
+  </footer>
+
+</body>
+</html>

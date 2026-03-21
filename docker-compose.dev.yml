@@ -1,0 +1,38 @@
+# Override для локальной разработки.
+# Использование: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  api:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=debug
+
+  worker:
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=debug
+
+  frontend:
+    build:
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Nginx в dev не нужен — приложение доступно напрямую
+  nginx:
+    profiles:
+      - donotstart

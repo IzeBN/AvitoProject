@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
+  <title>{{ title }}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; mso-line-height-rule: exactly;">
+
+  <!-- Preheader (скрытый текст) -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
+    {{ title }} — {{ product_name }}
+    &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <!-- Обёртка на весь экран -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+         style="background-color: #f1f5f9; min-height: 100vh;">
+    <tr>
+      <td align="center" style="padding: 40px 16px 40px 16px;">
+
+        <!-- Основной контейнер 600px -->
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"
+               style="max-width: 600px; width: 100%;">
+
+          <!-- Цветная полоса сверху -->
+          <tr>
+            <td style="height: 4px; background-color: {{ accent_color }}; border-radius: 16px 16px 0 0;"></td>
+          </tr>
+
+          <!-- Белая карточка -->
+          <tr>
+            <td style="background-color: #ffffff; border-radius: 0 0 16px 16px; padding: 40px 48px 40px 48px; box-shadow: 0 4px 24px rgba(0,0,0,0.07);">
+
+              <!-- Header: логотип + название -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 32px;" align="center">
+
+                    <!-- Логотип: круг с буквой A -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                      <tr>
+                        <td style="width: 48px; height: 48px; background-color: {{ accent_color }}; border-radius: 12px; text-align: center; vertical-align: middle;">
+                          <span style="font-size: 24px; font-weight: 800; color: #ffffff; line-height: 48px; display: inline-block; width: 48px; height: 48px; text-align: center;">A</span>
+                        </td>
+                        <td style="width: 12px;"></td>
+                        <td style="vertical-align: middle;">
+                          <span style="font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: -0.3px;">{{ product_name }}</span>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Badge (опционально) -->
+              {% if badge_label %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td align="center" style="padding-bottom: 20px;">
+                    <span style="display: inline-block; padding: 6px 16px; background-color: {{ accent_color }}1a; border: 1.5px solid {{ accent_color }}40; border-radius: 100px; font-size: 13px; font-weight: 600; color: {{ accent_color }}; letter-spacing: 0.2px;">
+                      {% if badge_icon %}{{ badge_icon }}&nbsp;{% endif %}{{ badge_label }}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- Title -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 16px;">
+                    <h1 style="margin: 0; font-size: 26px; font-weight: 700; color: #0f172a; line-height: 1.3; letter-spacing: -0.5px;">
+                      {{ title }}
+                    </h1>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Разделитель -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="height: 1px; background-color: #e2e8f0; margin-bottom: 24px; padding-bottom: 24px;"></td>
+                </tr>
+              </table>
+
+              <!-- Body text -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding-top: 24px; padding-bottom: 24px; font-size: 16px; line-height: 1.6; color: #334155;">
+                    {{ body | safe }}
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Details таблица (опционально) -->
+              {% if details %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="margin-bottom: 24px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
+                {% for item in details %}
+                <tr style="background-color: {% if loop.index is odd %}#f8fafc{% else %}#ffffff{% endif %};">
+                  <td style="padding: 12px 16px; border-left: 3px solid {{ accent_color }}; font-size: 13px; font-weight: 600; color: #64748b; white-space: nowrap; width: 40%;">
+                    {{ item.label }}
+                  </td>
+                  <td style="padding: 12px 16px; font-size: 14px; color: #0f172a; font-weight: 500;">
+                    {{ item.value }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </table>
+              {% endif %}
+
+              <!-- Highlight блок (пароль / код) -->
+              {% if highlight %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-left: 4px solid {{ accent_color }}; border-radius: 8px; padding: 16px 20px;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px;">
+                      {{ highlight.label }}
+                    </p>
+                    <p style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; font-family: 'Courier New', Courier, monospace; letter-spacing: 2px;">
+                      {{ highlight.value }}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- CTA кнопка (опционально) -->
+              {% if cta_text and cta_url %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="margin-bottom: 24px;">
+                <tr>
+                  <td align="center" style="padding-top: 8px; padding-bottom: 8px;">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+                      href="{{ cta_url }}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="25%"
+                      fillcolor="{{ accent_color }}" strokecolor="{{ accent_color }}">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:600;">{{ cta_text }}</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ cta_url }}"
+                       style="display: inline-block; padding: 14px 36px; background-color: {{ accent_color }}; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 10px; letter-spacing: 0.2px; line-height: 1; mso-hide: all;">
+                      {{ cta_text }}
+                    </a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- Secondary text (мелкая подсказка) -->
+              {% if secondary_text %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding-top: 8px; font-size: 13px; color: #94a3b8; line-height: 1.5; text-align: center;">
+                    {{ secondary_text }}
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- Нижний разделитель -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="margin-top: 32px;">
+                <tr>
+                  <td style="height: 1px; background-color: #e2e8f0;"></td>
+                </tr>
+              </table>
+
+              <!-- Footer -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding-top: 24px; font-size: 12px; color: #94a3b8; line-height: 1.6; text-align: center;">
+                    {{ footer_text }}
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+        </table>
+        <!-- /Основной контейнер -->
+
+      </td>
+    </tr>
+  </table>
+  <!-- /Обёртка -->
+
+</body>
+</html>
