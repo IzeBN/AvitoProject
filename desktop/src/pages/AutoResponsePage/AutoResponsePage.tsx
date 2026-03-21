@@ -25,6 +25,10 @@ const AUTO_TYPE_LABELS: Record<string, string> = {
   on_response: 'На отклик',
 }
 
+
+
+
+
 // ---- Debounced textarea для default messages ----
 function DefaultMessageTextarea({
   accountId,
