@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.IZEB_SECRET }}
           script: |
             set -e
-            cd /opt/responscrm
+            cd ./responscrm
 
             echo "→ Pull latest code"
             git pull origin main
