@@ -29,12 +29,13 @@ class AvitoAccountService:
         repo: AvitoAccountRepository,
         avito_client: "AvitoAPIClient",
         encryption_key: bytes,
-        base_url: str,
+        base_url: str = "",  # не используется, оставлен для совместимости
     ) -> None:
+        from app.config import get_settings
         self._repo = repo
         self._client = avito_client
         self._enc_key = encryption_key
-        self._base_url = base_url.rstrip("/")
+        self._base_url = get_settings().WEBHOOK_BASE_URL.rstrip("/")
 
     def _encrypt(self, value: str) -> str:
         from app.security.encryption import encrypt

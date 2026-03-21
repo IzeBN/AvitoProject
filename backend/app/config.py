@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Приложение
     # ------------------------------------------------------------------
-    APP_NAME: str = "AvitoСRM"
+    APP_NAME: str = "responsCRM"
+    WEBHOOK_BASE_URL: str = "https://api.responscrm.ru"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     LOG_LEVEL: str = "info"

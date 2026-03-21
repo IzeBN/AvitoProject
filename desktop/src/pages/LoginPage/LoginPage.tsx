@@ -47,8 +47,8 @@ export default function LoginPage() {
       <div className="login-card">
         {/* Заголовок */}
         <div className="login-header">
-          <div className="login-logo">A</div>
-          <h1 className="login-title">AvitoСRM</h1>
+          <div className="login-logo">R</div>
+          <h1 className="login-title">responsCRM</h1>
           <p className="login-subtitle">Войдите в свой аккаунт</p>
         </div>
 
@@ -108,7 +108,7 @@ export default function LoginPage() {
             className="login-link-btn"
             onClick={() => navigate('/register')}
           >
-            Зарегистрировать организацию
+            Зарегистрироваться
           </button>
         </p>
       </div>
