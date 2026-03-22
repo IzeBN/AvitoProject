@@ -10,6 +10,7 @@ Webhook роутер — приём событий от Avito API.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 import orjson
@@ -23,6 +24,33 @@ from app.redis import get_redis
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["webhooks"])
+
+
+def _body_hash(body: bytes) -> str:
+    """Стабильный MD5-хеш тела запроса (не зависит от PYTHONHASHSEED)."""
+    return hashlib.md5(body, usedforsecurity=False).hexdigest()[:24]
+
+
+def _extract_message_uid(payload: dict, body: bytes) -> str:
+    """
+    Извлечь стабильный уникальный ключ события из message-хука.
+    Avito кладёт ID сообщения в payload.payload.value.id.
+    Fallback: MD5 тела запроса.
+    """
+    value = (payload.get("payload") or {}).get("value") or {}
+    msg_id = (
+        value.get("id")
+        or payload.get("id")
+        or payload.get("event_id")
+    )
+    if msg_id:
+        return str(msg_id)
+    # Для системных сообщений без id используем chat_id + тип + хеш
+    chat_id = value.get("chat_id") or payload.get("chat_id") or ""
+    msg_type = value.get("type") or ""
+    if chat_id:
+        return f"{chat_id}:{msg_type}:{_body_hash(body)}"
+    return _body_hash(body)
 
 
 async def _get_account_cached(
@@ -79,11 +107,7 @@ async def avito_messages_webhook(
             logger.warning("messages webhook: unknown avito_user_id=%s", avito_user_id)
             return {"ok": True}
 
-        event_uid = (
-            payload.get("id")
-            or payload.get("event_id")
-            or str(hash(body))[:32]
-        )
+        event_uid = _extract_message_uid(payload, body)
         if not await _dedup(redis, f"webhook:dedup:msg:{avito_user_id}:{event_uid}"):
             logger.debug("messages webhook: duplicate event_uid=%s skipped", event_uid)
             return {"ok": True}
@@ -124,7 +148,7 @@ async def avito_responses_webhook(
             return {"ok": True}
 
         apply_id = payload.get("applyId") or payload.get("apply_id")
-        event_uid = apply_id or str(hash(body))[:32]
+        event_uid = str(apply_id) if apply_id else _body_hash(body)
         if not await _dedup(redis, f"webhook:dedup:resp:{avito_user_id}:{event_uid}"):
             logger.debug("responses webhook: duplicate apply_id=%s skipped", apply_id)
             return {"ok": True}

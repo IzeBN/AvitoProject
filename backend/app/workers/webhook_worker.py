@@ -10,8 +10,20 @@ ARQ обработчики вебхуков Avito.
 from __future__ import annotations
 
 import logging
+import uuid
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _AccountProxy:
+    """Лёгкий прокси аккаунта для AvitoAPIClient — без SQLAlchemy ORM overhead."""
+    id: uuid.UUID
+    org_id: uuid.UUID
+    client_id_enc: str
+    client_secret_enc: str
+    avito_user_id: int
 
 # Системные сообщения с этими flow_id считаются откликами
 _RESPONSE_FLOWS = {"job", "job_apply_enrichment"}
@@ -127,13 +139,13 @@ async def handle_new_response(
                     )).fetchone()
 
                 if _acc_row:
-                    from app.models.avito import AvitoAccount as _AvitoAccount
-                    _fake_account = _AvitoAccount.__new__(_AvitoAccount)
-                    _fake_account.id = _account_id
-                    _fake_account.org_id = _org_id
-                    _fake_account.client_id_enc = _acc_row[0]
-                    _fake_account.client_secret_enc = _acc_row[1]
-                    _fake_account.avito_user_id = _acc_row[2]
+                    _fake_account = _AccountProxy(
+                        id=_account_id,
+                        org_id=_org_id,
+                        client_id_enc=_acc_row[0],
+                        client_secret_enc=_acc_row[1],
+                        avito_user_id=_acc_row[2],
+                    )
 
                     app_data = await avito_client.get_application(_fake_account, apply_id)
 
@@ -190,13 +202,13 @@ async def handle_new_response(
                     )).fetchone()
 
                 if _acc2:
-                    from app.models.avito import AvitoAccount as _AvitoAccount2
-                    _fa2 = _AvitoAccount2.__new__(_AvitoAccount2)
-                    _fa2.id = _account_id
-                    _fa2.org_id = _org_id
-                    _fa2.client_id_enc = _acc2[0]
-                    _fa2.client_secret_enc = _acc2[1]
-                    _fa2.avito_user_id = _acc2[2]
+                    _fa2 = _AccountProxy(
+                        id=_account_id,
+                        org_id=_org_id,
+                        client_id_enc=_acc2[0],
+                        client_secret_enc=_acc2[1],
+                        avito_user_id=_acc2[2],
+                    )
 
                     chat_data = await avito_client.get_user_info(_fa2, _acc2[2], chat_id)
                     if chat_data:
