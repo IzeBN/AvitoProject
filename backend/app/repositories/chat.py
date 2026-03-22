@@ -137,6 +137,18 @@ class ChatRepository(BaseRepository[ChatMessage]):
         )
         await self._session.execute(stmt)
 
+        # Сбросить флаг has_new_message на кандидате
+        stmt_cand = (
+            update(Candidate)
+            .where(
+                Candidate.chat_id == chat_id,
+                Candidate.org_id == org_id,
+                Candidate.deleted_at.is_(None),
+            )
+            .values(has_new_message=False)
+        )
+        await self._session.execute(stmt_cand)
+
         # Помечаем все сообщения как прочитанные
         stmt2 = (
             update(ChatMessage)

@@ -147,11 +147,16 @@ class ChatService:
                 detail="Чат не найден",
             )
 
-        # Write-behind: обновляем метаданные через Redis
+        # Прямое обновление в БД: unread_count=0, has_new_message=false
+        await self._repo.mark_read(meta.chat_id, org_id)
+        await self._repo._session.commit()
+
+        # Write-behind: синхронизируем Redis-буфер
         await self._cache.wb_update_chat_meta(
             meta.chat_id,
             {"unread_count": "0"},
         )
 
-        # Инвалидируем кеш сообщений
+        # Инвалидируем кеш сообщений и кандидатов
         await self._cache.invalidate_chat(str(candidate_id))
+        await self._cache.invalidate_candidates(org_id)
