@@ -30,8 +30,8 @@ class AutoResponseService:
         self,
         account: "AvitoAccount",
         chat_id: str,
-        avito_user_id: int,
         item_id: int,
+        auto_type: str | None = None,
     ) -> bool:
         """
         Отправить автоответ если есть активное правило.
@@ -39,7 +39,7 @@ class AutoResponseService:
         Возвращает True если сообщение отправлено.
         """
         rule = await self._repo.get_active_rule_for_item(
-            account.org_id, account.id, item_id
+            account.org_id, account.id, item_id, auto_type=auto_type
         )
         if rule is None:
             return False
@@ -60,7 +60,7 @@ class AutoResponseService:
 
         try:
             await self._client.send_message(
-                account, chat_id, avito_user_id, message_text
+                account, chat_id, account.avito_user_id, message_text
             )
             logger.info(
                 "auto_response sent: account=%s chat=%s",

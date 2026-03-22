@@ -278,14 +278,28 @@ class AvitoAPIClient:
     # ------------------------------------------------------------------
 
     async def get_items(self, account: "AvitoAccount") -> list[dict]:
-        """Выгрузить все объявления аккаунта."""
-        data = await self._request(
-            "GET",
-            f"/core/v1/accounts/{account.avito_user_id}/items",
-            account,
-            params={"status": "active"},
-        )
-        return data.get("resources", [])
+        """Выгрузить все объявления аккаунта (все статусы, с пагинацией)."""
+        all_items: list[dict] = []
+        per_page = 100
+        page = 1
+
+        while True:
+            data = await self._request(
+                "GET",
+                f"/core/v1/accounts/{account.avito_user_id}/items",
+                account,
+                params={"per_page": per_page, "page": page},
+            )
+            resources = data.get("resources", [])
+            all_items.extend(resources)
+
+            meta = data.get("meta", {})
+            total = meta.get("total", len(all_items))
+            if len(all_items) >= total or len(resources) < per_page:
+                break
+            page += 1
+
+        return all_items
 
     async def activate_item(self, account: "AvitoAccount", item_id: int) -> None:
         """Активировать объявление."""

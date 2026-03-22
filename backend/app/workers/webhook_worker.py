@@ -121,18 +121,27 @@ async def handle_new_response(
             dept_row = dept_result.fetchone()
             account_department_id = str(dept_row[0]) if dept_row and dept_row[0] else None
 
+            # Получаем default stage
+            stage_result = await session.execute(
+                text("SELECT id FROM pipeline_stages WHERE org_id = CAST(:org_id AS UUID) AND is_default = true LIMIT 1"),
+                {"org_id": str(_org_id)},
+            )
+            stage_row = stage_result.fetchone()
+            default_stage_id = str(stage_row[0]) if stage_row and stage_row[0] else None
+
             # Upsert candidate
             candidate_result = await session.execute(
                 text("""
                     INSERT INTO candidates (
                         org_id, avito_account_id, chat_id, avito_user_id, avito_item_id,
                         name, phone_enc, phone_search_hash, source, has_new_message,
-                        department_id
+                        department_id, stage_id
                     ) VALUES (
                         CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, :avito_user_id,
                         :avito_item_id, :name, :phone_enc, :phone_search_hash,
                         'avito', true,
-                        CAST(NULLIF(:department_id, '') AS UUID)
+                        CAST(NULLIF(:department_id, '') AS UUID),
+                        CAST(NULLIF(:stage_id, '') AS UUID)
                     )
                     ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL
                     DO UPDATE SET
@@ -155,6 +164,7 @@ async def handle_new_response(
                     "phone_enc": phone_enc,
                     "phone_search_hash": phone_search_hash,
                     "department_id": account_department_id,
+                    "stage_id": default_stage_id,
                 },
             )
             row = candidate_result.fetchone()
@@ -186,7 +196,8 @@ async def handle_new_response(
         if avito_item_id and avito_account_id:
             try:
                 await _check_and_send_auto_response(
-                    ctx, _org_id, _account_id, chat_id, avito_user_id, avito_item_id
+                    ctx, _org_id, _account_id, chat_id, avito_item_id,
+                    auto_type="on_response",
                 )
             except Exception:
                 logger.exception(
@@ -335,14 +346,23 @@ async def handle_new_message(
             is_new_candidate = candidate_id is None
 
             if candidate_id is None and chat_id:
+                # Получаем default stage для нового кандидата
+                stage_result = await session.execute(
+                    text("SELECT id FROM pipeline_stages WHERE org_id = CAST(:org_id AS UUID) AND is_default = true LIMIT 1"),
+                    {"org_id": str(_org_id)},
+                )
+                stage_row = stage_result.fetchone()
+                default_stage_id = str(stage_row[0]) if stage_row and stage_row[0] else None
+
                 new_cand = await session.execute(
                     text("""
                         INSERT INTO candidates (
                             org_id, avito_account_id, chat_id, source,
-                            has_new_message, department_id
+                            has_new_message, department_id, stage_id
                         ) VALUES (
                             CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, 'avito',
-                            true, CAST(NULLIF(:department_id, '') AS UUID)
+                            true, CAST(NULLIF(:department_id, '') AS UUID),
+                            CAST(NULLIF(:stage_id, '') AS UUID)
                         )
                         ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL DO UPDATE SET
                             has_new_message = true,
@@ -354,6 +374,7 @@ async def handle_new_message(
                         "account_id": str(_account_id),
                         "chat_id": chat_id,
                         "department_id": account_department_id,
+                        "stage_id": default_stage_id,
                     },
                 )
                 new_row = new_cand.fetchone()
@@ -417,6 +438,30 @@ async def handle_new_message(
             except Exception:
                 logger.warning(
                     "handle_new_message: enrich failed chat_id=%s", chat_id,
+                    exc_info=True,
+                )
+
+            # Авто-ответ на первое сообщение — item_id может стать известен после обогащения
+            try:
+                # Получаем актуальный avito_item_id кандидата после обогащения
+                async with session_factory() as _s:
+                    from sqlalchemy import text as _text
+                    await _s.execute(_text("SET LOCAL app.is_superadmin = 'true'"))
+                    _item_result = await _s.execute(
+                        _text("SELECT avito_item_id FROM candidates WHERE id = CAST(:cid AS UUID)"),
+                        {"cid": str(candidate_id)},
+                    )
+                    _item_row = _item_result.fetchone()
+                    _item_id = _item_row[0] if _item_row and _item_row[0] else None
+
+                if _item_id:
+                    await _check_and_send_auto_response(
+                        ctx, _org_id, _account_id, chat_id, _item_id,
+                        auto_type="on_first_message",
+                    )
+            except Exception:
+                logger.warning(
+                    "handle_new_message: auto_response failed chat_id=%s", chat_id,
                     exc_info=True,
                 )
 
@@ -699,11 +744,11 @@ async def _handle_system_message(
         )
 
         # Авто-ответ
-        if avito_item_id and candidate_avito_user_id:
+        if avito_item_id:
             try:
                 await _check_and_send_auto_response(
-                    ctx, org_id, account_id, chat_id,
-                    candidate_avito_user_id, avito_item_id,
+                    ctx, org_id, account_id, chat_id, avito_item_id,
+                    auto_type="on_response",
                 )
             except Exception:
                 logger.warning(
@@ -840,52 +885,47 @@ async def _check_and_send_auto_response(
     org_id,
     account_id,
     chat_id: str,
-    avito_user_id: int,
     item_id: int,
+    auto_type: str | None = None,
 ) -> None:
-    """Проверить авто-ответ и поставить задачу в очередь если нужно."""
+    """Проверить авто-ответ и отправить напрямую через AutoResponseService если нужно."""
     session_factory = ctx["session_factory"]
+    avito_client = _get_avito_client(ctx)
 
     async with session_factory() as session:
-        from sqlalchemy import text
+        from sqlalchemy import text, select as sa_select
+        from app.models.avito import AvitoAccount
+        from app.repositories.messaging import MessagingRepository
+        from app.services.auto_response import AutoResponseService
 
         await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
 
-        result = await session.execute(
-            text("""
-                SELECT id FROM auto_response_rules
-                WHERE org_id = CAST(:org_id AS UUID)
-                  AND avito_account_id = CAST(:account_id AS UUID)
-                  AND is_active = true
-                  AND (avito_item_id = :item_id OR avito_item_id IS NULL)
-                ORDER BY avito_item_id NULLS LAST
-                LIMIT 1
-            """),
-            {
-                "org_id": str(org_id),
-                "account_id": str(account_id),
-                "item_id": item_id,
-            },
+        acc_result = await session.execute(
+            sa_select(AvitoAccount).where(AvitoAccount.id == account_id)
         )
-        row = result.fetchone()
+        account = acc_result.scalar_one_or_none()
+        if account is None:
+            logger.warning(
+                "_check_and_send_auto_response: account not found account_id=%s", account_id
+            )
+            return
 
-    if row:
+        repo = MessagingRepository(session)
+        service = AutoResponseService(repo=repo, avito_client=avito_client)
+
         try:
-            from arq.connections import ArqRedis
-            from app.redis import get_arq_pool
-
-            arq_pool = get_arq_pool()
-            arq_redis = ArqRedis(pool_or_conn=arq_pool)
-            await arq_redis.enqueue_job(
-                "send_auto_response",
-                str(org_id),
-                str(account_id),
-                chat_id,
-                avito_user_id,
-                item_id,
+            await service.send_auto_response(
+                account=account,
+                chat_id=chat_id,
+                item_id=item_id,
+                auto_type=auto_type,
             )
         except Exception:
-            logger.exception("_check_and_send_auto_response: enqueue failed")
+            logger.exception(
+                "_check_and_send_auto_response: send failed account=%s chat=%s",
+                account_id,
+                chat_id,
+            )
 
 
 async def _write_audit_log(

@@ -485,6 +485,14 @@ async def send_message(
     db.add(message)
     await db.flush()
 
+    # Авто-назначение ответственного: если ещё не назначен — ставим текущего пользователя
+    if candidate.responsible_id is None:
+        await db.execute(
+            update(Candidate)
+            .where(Candidate.id == candidate_id)
+            .values(responsible_id=current_user.id)
+        )
+
     # Обновляем метаданные чата
     await db.execute(
         update(ChatMetadata)
@@ -513,6 +521,157 @@ async def send_message(
         is_read=message.is_read,
         created_at=message.created_at,
     )
+
+
+# ===========================================================================
+# Sync messages from Avito
+# ===========================================================================
+
+
+@router.post(
+    "/chat/{candidate_id}/sync",
+    status_code=status.HTTP_200_OK,
+    summary="Синхронизировать историю сообщений из Avito",
+    description="Загружает историю сообщений из Avito API и сохраняет новые в БД.",
+    dependencies=[Depends(require_permission("crm.candidates.view"))],
+)
+async def sync_messages(
+    candidate_id: uuid.UUID,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    avito_client: Annotated[AvitoAPIClient, Depends(_get_avito_client)],
+) -> dict:
+    """
+    Получает историю чата из Avito API и делает upsert новых сообщений в chat_messages.
+    Возвращает количество добавленных сообщений.
+    """
+    org_id: uuid.UUID = request.state.org_id
+
+    # Загружаем метаданные чата
+    meta_result = await db.execute(
+        select(ChatMetadata).where(
+            ChatMetadata.candidate_id == candidate_id,
+            ChatMetadata.org_id == org_id,
+        )
+    )
+    meta = meta_result.scalar_one_or_none()
+    if meta is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат для данного кандидата не найден",
+        )
+
+    # Загружаем кандидата для получения аккаунта
+    cand_result = await db.execute(
+        select(Candidate).where(
+            Candidate.id == candidate_id,
+            Candidate.org_id == org_id,
+        )
+    )
+    candidate = cand_result.scalar_one_or_none()
+    if candidate is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кандидат не найден",
+        )
+
+    account_result = await db.execute(
+        select(AvitoAccount).where(
+            AvitoAccount.id == candidate.avito_account_id,
+            AvitoAccount.org_id == org_id,
+            AvitoAccount.is_active.is_(True),
+        )
+    )
+    account = account_result.scalar_one_or_none()
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avito аккаунт не найден или неактивен",
+        )
+
+    # Получаем историю из Avito API
+    try:
+        messages = await avito_client.get_messages(
+            account=account,
+            chat_id=meta.chat_id,
+            user_id=account.avito_user_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Ошибка получения сообщений из Avito API: {exc}",
+        ) from exc
+
+    added = 0
+    from datetime import timezone as _tz
+    from sqlalchemy import text as sa_text
+
+    for msg in messages:
+        avito_message_id = str(msg.get("id") or "")
+        if not avito_message_id:
+            continue
+
+        # Определяем тип и контент
+        raw_type: str = msg.get("type", "text") or "text"
+        content_block: dict = msg.get("content") or {}
+        if raw_type == "text":
+            content_text = content_block.get("text") or msg.get("text") or ""
+            message_type = "text"
+        elif raw_type == "image":
+            sizes = content_block.get("image", {}).get("sizes", {})
+            content_text = sizes.get("1280x960") or sizes.get("640x480") or ""
+            message_type = "image"
+        else:
+            content_text = content_block.get("text") or ""
+            message_type = "text"
+
+        # Автор
+        author_id = msg.get("author_id")
+        if author_id and account.avito_user_id and int(author_id) == account.avito_user_id:
+            author_type = "account"
+        else:
+            author_type = "candidate"
+
+        # Timestamp
+        created_raw = msg.get("created")
+        if isinstance(created_raw, int):
+            from datetime import datetime
+            created_at = datetime.fromtimestamp(created_raw, tz=_tz.utc)
+        else:
+            created_at = None
+
+        result = await db.execute(
+            sa_text("""
+                INSERT INTO chat_messages (
+                    org_id, candidate_id, chat_id, avito_message_id,
+                    content, message_type, author_type, created_at
+                )
+                SELECT
+                    CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id,
+                    :avito_message_id, :content, :message_type, :author_type,
+                    COALESCE(CAST(:created_at AS TIMESTAMPTZ), now())
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM chat_messages
+                    WHERE avito_message_id = :avito_message_id
+                      AND avito_message_id IS NOT NULL
+                )
+            """),
+            {
+                "org_id": str(org_id),
+                "candidate_id": str(candidate_id),
+                "chat_id": meta.chat_id,
+                "avito_message_id": avito_message_id,
+                "content": content_text,
+                "message_type": message_type,
+                "author_type": author_type,
+                "created_at": created_at,
+            },
+        )
+        added += result.rowcount
+
+    await db.commit()
+    return {"added": added}
 
 
 # ===========================================================================

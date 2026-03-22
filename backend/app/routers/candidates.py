@@ -88,6 +88,44 @@ async def list_stages(
     ]
 
 
+@router.post(
+    "/stages/{stage_id}/set-default",
+    status_code=200,
+    summary="Установить этап как автоматический при создании кандидата",
+    dependencies=[Depends(require_permission("crm.settings.manage"))],
+)
+async def set_default_stage(
+    stage_id: uuid.UUID,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Сбросить is_default у всех этапов орг., затем выставить is_default=True для указанного."""
+    from sqlalchemy import update as sa_update
+    from app.models.crm import PipelineStage
+
+    org_id: uuid.UUID = request.state.org_id
+    # Снимаем is_default со всех
+    await db.execute(
+        sa_update(PipelineStage)
+        .where(PipelineStage.org_id == org_id)
+        .values(is_default=False)
+    )
+    # Устанавливаем на указанный
+    result = await db.execute(
+        sa_update(PipelineStage)
+        .where(PipelineStage.org_id == org_id, PipelineStage.id == stage_id)
+        .values(is_default=True)
+        .returning(PipelineStage.id, PipelineStage.name)
+    )
+    row = result.fetchone()
+    await db.commit()
+    if row is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Этап не найден")
+    return {"id": str(row[0]), "name": row[1], "is_default": True}
+
+
 @router.get(
     "/tags",
     summary="Теги организации",

@@ -1,6 +1,6 @@
 """
 Роутер управления шаблонами сообщений:
-default_messages, item_messages, auto_response_rules, fast_answers.
+item_messages, auto_response_rules.
 """
 
 from __future__ import annotations
@@ -9,25 +9,17 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.auth import User
 from app.models.messaging import AutoResponseRule
-from app.models.chat import FastAnswer
 from app.repositories.messaging import MessagingRepository
 from app.schemas.messaging import (
     AutoResponseRuleCreate,
     AutoResponseRulePatch,
     AutoResponseRuleResponse,
-    DefaultMessageResponse,
-    DefaultMessageUpdate,
-    FastAnswerCreate,
-    FastAnswerPatch,
-    FastAnswerReorder,
-    FastAnswerResponse,
     ItemMessageResponse,
     ItemMessageUpdate,
 )
@@ -37,43 +29,6 @@ router = APIRouter(prefix="/messaging", tags=["messaging"])
 
 def _repo(db: AsyncSession) -> MessagingRepository:
     return MessagingRepository(db)
-
-
-# ------------------------------------------------------------------
-# Default Messages
-# ------------------------------------------------------------------
-
-@router.get(
-    "/default/{account_id}",
-    response_model=DefaultMessageResponse,
-)
-async def get_default_message(
-    account_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> DefaultMessageResponse:
-    msg = await _repo(db).get_default_message(current_user.org_id, account_id)
-    if msg is None:
-        raise HTTPException(status_code=404, detail="Дефолтное сообщение не найдено")
-    return DefaultMessageResponse.model_validate(msg)
-
-
-@router.put(
-    "/default/{account_id}",
-    response_model=DefaultMessageResponse,
-)
-async def upsert_default_message(
-    account_id: uuid.UUID,
-    body: DefaultMessageUpdate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> DefaultMessageResponse:
-    msg = await _repo(db).upsert_default_message(
-        current_user.org_id, account_id, body.message
-    )
-    await db.commit()
-    await db.refresh(msg)
-    return DefaultMessageResponse.model_validate(msg)
 
 
 # ------------------------------------------------------------------
@@ -180,99 +135,3 @@ async def delete_auto_rule(
         raise HTTPException(status_code=404, detail="Правило не найдено")
     await _repo(db).delete_auto_rule(rule)
     await db.commit()
-
-
-# ------------------------------------------------------------------
-# Fast Answers
-# ------------------------------------------------------------------
-
-@router.get("/fast-answers", response_model=list[FastAnswerResponse])
-async def list_fast_answers(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[FastAnswerResponse]:
-    answers = await _repo(db).get_fast_answers(current_user.org_id, current_user.id)
-    return [FastAnswerResponse.model_validate(a) for a in answers]
-
-
-@router.post(
-    "/fast-answers",
-    response_model=FastAnswerResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_fast_answer(
-    body: FastAnswerCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> FastAnswerResponse:
-    answer = FastAnswer(
-        org_id=current_user.org_id,
-        user_id=current_user.id,
-        message=body.message,
-        sort_order=body.sort_order,
-    )
-    answer = await _repo(db).create_fast_answer(answer)
-    await db.commit()
-    await db.refresh(answer)
-    return FastAnswerResponse.model_validate(answer)
-
-
-@router.patch("/fast-answers/{answer_id}", response_model=FastAnswerResponse)
-async def patch_fast_answer(
-    answer_id: uuid.UUID,
-    body: FastAnswerPatch,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> FastAnswerResponse:
-    answer = await _repo(db).get_fast_answer_by_id(
-        current_user.org_id, current_user.id, answer_id
-    )
-    if answer is None:
-        raise HTTPException(status_code=404, detail="Быстрый ответ не найден")
-
-    if body.message is not None:
-        answer.message = body.message
-    if body.sort_order is not None:
-        answer.sort_order = body.sort_order
-
-    await db.commit()
-    await db.refresh(answer)
-    return FastAnswerResponse.model_validate(answer)
-
-
-@router.delete(
-    "/fast-answers/{answer_id}",
-    status_code=status.HTTP_200_OK,
-)
-async def delete_fast_answer(
-    answer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> None:
-    answer = await _repo(db).get_fast_answer_by_id(
-        current_user.org_id, current_user.id, answer_id
-    )
-    if answer is None:
-        raise HTTPException(status_code=404, detail="Быстрый ответ не найден")
-    await _repo(db).delete_fast_answer(answer)
-    await db.commit()
-
-
-@router.put("/fast-answers/reorder", response_model=list[FastAnswerResponse])
-async def reorder_fast_answers(
-    body: FastAnswerReorder,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[FastAnswerResponse]:
-    """Переупорядочить быстрые ответы по списку IDs."""
-    repo = _repo(db)
-    answers = await repo.get_fast_answers(current_user.org_id, current_user.id)
-    answer_map = {a.id: a for a in answers}
-
-    for idx, aid in enumerate(body.ordered_ids):
-        if aid in answer_map:
-            answer_map[aid].sort_order = idx
-
-    await db.commit()
-    updated = await repo.get_fast_answers(current_user.org_id, current_user.id)
-    return [FastAnswerResponse.model_validate(a) for a in updated]

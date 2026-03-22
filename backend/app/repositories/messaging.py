@@ -122,22 +122,36 @@ class MessagingRepository:
         return result.scalar_one_or_none()
 
     async def get_active_rule_for_item(
-        self, org_id: uuid.UUID, account_id: uuid.UUID, item_id: int
+        self,
+        org_id: uuid.UUID,
+        account_id: uuid.UUID,
+        item_id: int,
+        auto_type: str | None = None,
     ) -> AutoResponseRule | None:
         """
         Найти активное правило: сначала специфичное для item_id (в avito_item_ids),
         потом глобальное (avito_item_ids IS NULL).
+        Если auto_type задан — фильтрует по нему.
         """
         from sqlalchemy import text as sa_text
+
+        def _base_conditions():
+            conds = [
+                AutoResponseRule.org_id == org_id,
+                AutoResponseRule.avito_account_id == account_id,
+                AutoResponseRule.is_active.is_(True),
+            ]
+            if auto_type is not None:
+                conds.append(AutoResponseRule.auto_type == auto_type)
+            return conds
+
         # Правило с конкретным item_id в массиве avito_item_ids
         result = await self._db.execute(
             select(AutoResponseRule)
             .where(
-                AutoResponseRule.org_id == org_id,
-                AutoResponseRule.avito_account_id == account_id,
-                AutoResponseRule.is_active.is_(True),
+                *_base_conditions(),
                 AutoResponseRule.avito_item_ids.isnot(None),
-                sa_text(f":item_id = ANY(avito_item_ids)").bindparams(item_id=item_id),
+                sa_text(":item_id = ANY(avito_item_ids)").bindparams(item_id=item_id),
             )
         )
         rule = result.scalar_one_or_none()
@@ -147,9 +161,7 @@ class MessagingRepository:
         # Глобальное правило (без конкретных ID)
         result = await self._db.execute(
             select(AutoResponseRule).where(
-                AutoResponseRule.org_id == org_id,
-                AutoResponseRule.avito_account_id == account_id,
-                AutoResponseRule.is_active.is_(True),
+                *_base_conditions(),
                 AutoResponseRule.avito_item_ids.is_(None),
             )
         )
