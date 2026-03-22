@@ -5,7 +5,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatMessage, ChatMetadata
@@ -91,7 +91,7 @@ class ChatRepository(BaseRepository[ChatMessage]):
                 ChatMetadata.org_id == org_id,
                 Candidate.deleted_at.is_(None),
             )
-            .order_by(ChatMetadata.last_message_at.desc().nullslast())
+            .order_by(func.coalesce(ChatMetadata.last_message_at, ChatMetadata.updated_at).desc())
             .offset(offset)
             .limit(page_size)
         )

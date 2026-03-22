@@ -247,13 +247,17 @@ async def handle_new_response(
                 await session.execute(
                     text("""
                         INSERT INTO chat_metadata (
-                            org_id, candidate_id, chat_id, unread_count
+                            org_id, candidate_id, chat_id, unread_count,
+                            last_message, last_message_at
                         ) VALUES (
-                            CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1
+                            CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1,
+                            'Кандидат откликнулся на вакансию', now()
                         )
                         ON CONFLICT (chat_id) DO UPDATE SET
-                            unread_count = chat_metadata.unread_count + 1,
-                            updated_at   = now()
+                            unread_count    = chat_metadata.unread_count + 1,
+                            last_message    = COALESCE(chat_metadata.last_message, 'Кандидат откликнулся на вакансию'),
+                            last_message_at = COALESCE(chat_metadata.last_message_at, now()),
+                            updated_at      = now()
                     """),
                     {
                         "org_id": str(_org_id),
@@ -509,15 +513,31 @@ async def handle_new_message(
 
                 # Upsert chat_metadata для нового кандидата
                 if candidate_id:
+                    _msg_preview = _last_message_preview(message_text, message_type)
+                    _msg_at = created_at_ts
                     await session.execute(
                         text("""
-                            INSERT INTO chat_metadata (org_id, candidate_id, chat_id, unread_count)
-                            VALUES (CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1)
+                            INSERT INTO chat_metadata (
+                                org_id, candidate_id, chat_id, unread_count,
+                                last_message, last_message_at
+                            )
+                            VALUES (
+                                CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1,
+                                :last_message, COALESCE(CAST(:last_message_at AS TIMESTAMPTZ), now())
+                            )
                             ON CONFLICT (chat_id) DO UPDATE SET
-                                unread_count = chat_metadata.unread_count + 1,
-                                updated_at = now()
+                                unread_count    = chat_metadata.unread_count + 1,
+                                last_message    = EXCLUDED.last_message,
+                                last_message_at = COALESCE(EXCLUDED.last_message_at, chat_metadata.last_message_at, now()),
+                                updated_at      = now()
                         """),
-                        {"org_id": str(_org_id), "candidate_id": str(candidate_id), "chat_id": chat_id},
+                        {
+                            "org_id": str(_org_id),
+                            "candidate_id": str(candidate_id),
+                            "chat_id": chat_id,
+                            "last_message": _msg_preview,
+                            "last_message_at": _msg_at,
+                        },
                     )
 
             # INSERT chat_messages (дедуп через WHERE NOT EXISTS)

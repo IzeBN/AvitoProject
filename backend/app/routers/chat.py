@@ -143,7 +143,7 @@ async def chat_list(
         select(ChatMetadata, Candidate.name.label("candidate_name"))
         .join(Candidate, Candidate.id == ChatMetadata.candidate_id)
         .where(and_(*conditions))
-        .order_by(ChatMetadata.last_message_at.desc().nullslast())
+        .order_by(func.coalesce(ChatMetadata.last_message_at, ChatMetadata.updated_at).desc())
         .offset(offset)
         .limit(per_page)
     )
@@ -155,13 +155,32 @@ async def chat_list(
         meta: ChatMetadata = row[0]
         candidate_name: str | None = row[1]
 
-        # Пробуем взять unread_count из Redis write-behind
-        unread_count = meta.unread_count
+        # Читаем актуальные данные из Redis write-behind (ещё не сброшены в БД)
         wb_key = f"wb:chat_meta:{meta.chat_id}"
-        wb_data = await redis.hget(wb_key, "unread_count")
-        if wb_data is not None:
+        wb_raw = await redis.hgetall(wb_key)
+        wb: dict[str, str] = {
+            (k.decode() if isinstance(k, bytes) else k): (v.decode() if isinstance(v, bytes) else v)
+            for k, v in (wb_raw or {}).items()
+        }
+
+        unread_count = meta.unread_count
+        if "unread_count" in wb:
             try:
-                unread_count = int(wb_data)
+                unread_count = int(wb["unread_count"])
+            except (ValueError, TypeError):
+                pass
+
+        last_message = meta.last_message
+        if wb.get("last_message"):
+            last_message = wb["last_message"]
+
+        last_message_at = meta.last_message_at
+        if wb.get("last_message_at"):
+            try:
+                from datetime import datetime as _dt
+                wb_at = _dt.fromisoformat(wb["last_message_at"])
+                if last_message_at is None or wb_at > last_message_at:
+                    last_message_at = wb_at
             except (ValueError, TypeError):
                 pass
 
@@ -170,8 +189,8 @@ async def chat_list(
                 "candidate_id": meta.candidate_id,
                 "chat_id": meta.chat_id,
                 "candidate_name": candidate_name,
-                "last_message": meta.last_message,
-                "last_message_at": meta.last_message_at,
+                "last_message": last_message,
+                "last_message_at": last_message_at,
                 "unread_count": unread_count,
                 "is_blocked": meta.is_blocked,
             }

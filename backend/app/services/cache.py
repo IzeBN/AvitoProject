@@ -95,10 +95,19 @@ class CacheService:
         """
         Обновить метаданные чата в Redis write-behind буфере.
         Воркер flush_write_behind смывает данные в PostgreSQL каждые 5 секунд.
+        Значение "increment" для unread_count обрабатывается через HINCRBY.
         """
-        str_data = {k: str(v) if v is not None else "" for k, v in data.items()}
-        await self.redis.hset(f"wb:chat_meta:{chat_id}", mapping=str_data)
-        await self.redis.sadd("wb:chat_meta:dirty", chat_id)
+        key = f"wb:chat_meta:{chat_id}"
+        pipe = self.redis.pipeline()
+        for k, v in data.items():
+            if k == "unread_count" and v == "increment":
+                pipe.hincrby(key, k, 1)
+            elif k == "unread_count" and v == "0":
+                pipe.hset(key, k, "0")
+            else:
+                pipe.hset(key, k, str(v) if v is not None else "")
+        pipe.sadd("wb:chat_meta:dirty", chat_id)
+        await pipe.execute()
 
     async def wb_update_candidate_flags(
         self, candidate_id: uuid.UUID, data: dict

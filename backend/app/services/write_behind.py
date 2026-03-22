@@ -76,16 +76,21 @@ async def _flush_chat_metadata(redis, session_factory) -> None:
 
                     stmt = text("""
                         UPDATE chat_metadata
-                        SET last_message      = :last_message,
+                        SET last_message      = CASE WHEN :last_message <> '' THEN :last_message ELSE last_message END,
                             unread_count      = :unread_count,
-                            last_message_at   = CAST(:last_message_at AS TIMESTAMPTZ),
+                            last_message_at   = CASE
+                                WHEN CAST(:last_message_at AS TIMESTAMPTZ) IS NOT NULL
+                                 AND (last_message_at IS NULL OR CAST(:last_message_at AS TIMESTAMPTZ) > last_message_at)
+                                THEN CAST(:last_message_at AS TIMESTAMPTZ)
+                                ELSE last_message_at
+                            END,
                             updated_at        = now()
                         WHERE chat_id = :chat_id
                     """)
                     await session.execute(
                         stmt,
                         {
-                            "last_message": last_message,
+                            "last_message": last_message or "",
                             "unread_count": unread,
                             "last_message_at": last_message_at_raw or None,
                             "chat_id": chat_id,
