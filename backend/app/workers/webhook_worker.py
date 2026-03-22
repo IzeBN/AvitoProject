@@ -217,7 +217,7 @@ async def handle_new_message(
 
             await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
 
-            # Найти candidate
+            # Найти candidate — если нет, создать (первое сообщение без отклика)
             cand_result = await session.execute(
                 text("""
                     SELECT id FROM candidates
@@ -229,7 +229,56 @@ async def handle_new_message(
             cand_row = cand_result.fetchone()
             candidate_id = cand_row[0] if cand_row else None
 
-            # INSERT chat_messages (только если нашли кандидата)
+            _account_id = uuid.UUID(avito_account_id)
+
+            if candidate_id is None and chat_id:
+                # Получаем department_id аккаунта
+                dept_result = await session.execute(
+                    text("SELECT department_id FROM avito_accounts WHERE id = :account_id::uuid"),
+                    {"account_id": str(_account_id)},
+                )
+                dept_row = dept_result.fetchone()
+                account_department_id = str(dept_row[0]) if dept_row and dept_row[0] else None
+
+                # Upsert кандидата
+                new_cand = await session.execute(
+                    text("""
+                        INSERT INTO candidates (
+                            org_id, avito_account_id, chat_id, source,
+                            has_new_message, department_id
+                        ) VALUES (
+                            :org_id::uuid, :account_id::uuid, :chat_id, 'avito',
+                            true, NULLIF(:department_id, '')::uuid
+                        )
+                        ON CONFLICT (org_id, chat_id) DO UPDATE SET
+                            has_new_message = true,
+                            updated_at = now()
+                        RETURNING id
+                    """),
+                    {
+                        "org_id": str(_org_id),
+                        "account_id": str(_account_id),
+                        "chat_id": chat_id,
+                        "department_id": account_department_id,
+                    },
+                )
+                new_row = new_cand.fetchone()
+                candidate_id = new_row[0] if new_row else None
+
+                # Upsert chat_metadata
+                if candidate_id:
+                    await session.execute(
+                        text("""
+                            INSERT INTO chat_metadata (org_id, candidate_id, chat_id, unread_count)
+                            VALUES (:org_id::uuid, :candidate_id::uuid, :chat_id, 1)
+                            ON CONFLICT (chat_id) DO UPDATE SET
+                                unread_count = chat_metadata.unread_count + 1,
+                                updated_at = now()
+                        """),
+                        {"org_id": str(_org_id), "candidate_id": str(candidate_id), "chat_id": chat_id},
+                    )
+
+            # INSERT chat_messages
             if candidate_id and chat_id:
                 await session.execute(
                     text("""
@@ -283,15 +332,20 @@ async def handle_new_message(
         # WebSocket broadcast
         from app.routers.ws import ws_manager
 
-        await ws_manager.broadcast_org(
-            _org_id,
-            {
-                "type": "new_message",
-                "candidate_id": str(candidate_id) if candidate_id else None,
-                "chat_id": chat_id,
-                "message": {"text": message_text, "type": message_type},
-            },
-        )
+        if candidate_id:
+            await ws_manager.broadcast_org(
+                _org_id,
+                {"type": "new_candidate", "candidate_id": str(candidate_id)},
+            )
+            await ws_manager.broadcast_org(
+                _org_id,
+                {
+                    "type": "new_message",
+                    "candidate_id": str(candidate_id),
+                    "chat_id": chat_id,
+                    "message": {"text": message_text, "type": message_type},
+                },
+            )
 
     except Exception:
         logger.exception(
