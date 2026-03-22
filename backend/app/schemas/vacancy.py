@@ -44,7 +44,7 @@ class VacancyListResponse(BaseModel):
 class VacancySyncResponse(BaseModel):
     """Результат синхронизации вакансий."""
 
-    synced: int
+    synced_count: int
     created: int
     updated: int
     accounts_processed: int

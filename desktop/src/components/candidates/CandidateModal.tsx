@@ -12,12 +12,22 @@ import { StageSelect } from './StageSelect'
 import { useUIStore } from '@/stores/ui.store'
 import type { Candidate } from '@/types/candidate'
 
-const VacancyField = ({ vacancy, onUpdate }: { vacancy: string | null | undefined; onUpdate: (v: string | null) => void }) => {
+const VacancyField = ({
+  vacancyId,
+  vacancyText,
+  onUpdate,
+}: {
+  vacancyId: string | null | undefined
+  vacancyText: string | null | undefined
+  onUpdate: (id: string | null) => void
+}) => {
   const { data: vacancies = [] } = useQuery({
     queryKey: ['vacancies'],
     queryFn: () => vacanciesApi.getList(),
     staleTime: 60_000,
   })
+  // Если текущая вакансия не найдена в списке по ID — показываем её как отдельный option
+  const inList = !vacancyId || vacancies.some((v: { id: string }) => v.id === vacancyId)
   return (
     <div className="cmodal-field">
       <div className="cmodal-field-label">
@@ -26,12 +36,15 @@ const VacancyField = ({ vacancy, onUpdate }: { vacancy: string | null | undefine
       </div>
       <select
         className="cmodal-select"
-        value={vacancy ?? ''}
+        value={vacancyId ?? ''}
         onChange={e => onUpdate(e.target.value || null)}
       >
         <option value="">Не указана</option>
+        {!inList && vacancyId && (
+          <option value={vacancyId}>{vacancyText ?? vacancyId}</option>
+        )}
         {vacancies.map((v: { id: string; title: string }) => (
-          <option key={v.id} value={v.title}>{v.title}</option>
+          <option key={v.id} value={v.id}>{v.title}</option>
         ))}
       </select>
     </div>
@@ -245,7 +258,11 @@ export const CandidateModal = ({
             </div>
 
             {/* Вакансия */}
-            <VacancyField vacancy={candidate.vacancy} onUpdate={v => void handleUpdate('vacancy', v)} />
+            <VacancyField
+              vacancyId={candidate.vacancy_id}
+              vacancyText={candidate.vacancy}
+              onUpdate={id => void handleUpdate('vacancy_id', id)}
+            />
 
             {/* Город / Локация */}
             {candidate.location && (

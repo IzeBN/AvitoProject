@@ -79,11 +79,18 @@ def _candidate_to_response(
         last_message_at = chat_meta.get("last_message_at")
         unread_count = int(chat_meta.get("unread_count", 0))
 
+    # Вакансия — prefer связанный объект если есть
+    vacancy_title = candidate.vacancy
+    vacancy_id = getattr(candidate, "vacancy_id", None)
+    if vacancy_id and hasattr(candidate, "vacancy_obj") and candidate.vacancy_obj:
+        vacancy_title = candidate.vacancy_obj.title or vacancy_title
+
     return CandidateResponse(
         id=candidate.id,
         name=candidate.name,
         phone=phone,
-        vacancy=candidate.vacancy,
+        vacancy=vacancy_title,
+        vacancy_id=vacancy_id,
         location=candidate.location,
         stage=stage,
         department=department,
@@ -303,6 +310,25 @@ class CandidateService:
             return await self.get_one(request, candidate_id)
 
         old_stage_id = candidate.stage_id
+
+        # При установке vacancy_id — синхронизируем текстовое поле vacancy
+        if "vacancy_id" in update_dict:
+            from sqlalchemy import select as _select
+            from app.models.vacancy import Vacancy as _Vacancy
+            _vid = update_dict["vacancy_id"]
+            if _vid is not None:
+                _vac_result = await self._db.execute(
+                    _select(_Vacancy).where(
+                        _Vacancy.id == _vid,
+                        _Vacancy.org_id == org_id,
+                    )
+                )
+                _vac = _vac_result.scalar_one_or_none()
+                if _vac:
+                    update_dict["vacancy"] = _vac.title
+            else:
+                # Явная очистка
+                update_dict.setdefault("vacancy", None)
 
         # Применяем обновление
         await self._repo.update(candidate, **update_dict)

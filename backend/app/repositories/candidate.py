@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.crm import Candidate, CandidateTag, Tag
+from app.models.vacancy import Vacancy
 from app.models.chat import ChatMetadata
 from app.repositories.base import BaseRepository
 from app.schemas.candidate import CandidateFilters
@@ -53,6 +54,9 @@ class CandidateRepository(BaseRepository[Candidate]):
 
         if filters.vacancy is not None:
             conditions.append(Candidate.vacancy.ilike(f"%{filters.vacancy}%"))
+
+        if getattr(filters, "vacancy_id", None) is not None:
+            conditions.append(Candidate.vacancy_id == filters.vacancy_id)
 
         if filters.due_date_from is not None:
             conditions.append(Candidate.due_date >= filters.due_date_from)
@@ -116,6 +120,7 @@ class CandidateRepository(BaseRepository[Candidate]):
                 selectinload(Candidate.stage),
                 selectinload(Candidate.department),
                 selectinload(Candidate.responsible),
+                selectinload(Candidate.vacancy_obj),
             )
             .where(and_(*conditions))
         )
@@ -178,6 +183,7 @@ class CandidateRepository(BaseRepository[Candidate]):
                 selectinload(Candidate.stage),
                 selectinload(Candidate.department),
                 selectinload(Candidate.responsible),
+                selectinload(Candidate.vacancy_obj),
             )
             .where(
                 Candidate.id == candidate_id,

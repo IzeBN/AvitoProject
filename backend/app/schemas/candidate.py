@@ -64,6 +64,7 @@ class CandidateFilters(BaseModel):
     search: str | None = None
     location: str | None = None
     vacancy: str | None = None
+    vacancy_id: uuid.UUID | None = None
     due_date_from: date | None = None
     due_date_to: date | None = None
     created_at_from: datetime | None = None
@@ -83,6 +84,7 @@ class CandidateResponse(BaseModel):
     name: str | None
     phone: str | None = None  # расшифрованный — только при праве view_phone
     vacancy: str | None
+    vacancy_id: uuid.UUID | None = None
     location: str | None
     stage: StageShort | None
     department: DepartmentShort | None
@@ -151,6 +153,7 @@ class CandidateEdit(BaseModel):
     comment: str | None = None
     due_date: date | None = None
     vacancy: str | None = None
+    vacancy_id: uuid.UUID | None = None
 
 
 class BulkEditRequest(BaseModel):

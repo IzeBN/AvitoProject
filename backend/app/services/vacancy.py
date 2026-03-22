@@ -60,7 +60,7 @@ class VacancyService:
         except ImportError:
             logger.warning("AvitoAccount model not found, skipping sync")
             return VacancySyncResponse(
-                synced=0, created=0, updated=0, accounts_processed=0
+                synced_count=0, created=0, updated=0, accounts_processed=0
             )
 
         result = await self._session.execute(
@@ -91,7 +91,7 @@ class VacancyService:
         await self._session.commit()
 
         return VacancySyncResponse(
-            synced=total_created + total_updated,
+            synced_count=total_created + total_updated,
             created=total_created,
             updated=total_updated,
             accounts_processed=len(accounts),

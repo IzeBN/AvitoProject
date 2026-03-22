@@ -343,12 +343,12 @@ async def handle_new_response(
 
             await session.commit()
 
-        # Upsert вакансии в таблицу vacancies
+        # Upsert вакансии в таблицу vacancies + связать кандидата по vacancy_id
         if avito_item_id and vacancy_title:
             try:
                 async with session_factory() as v_session:
                     await v_session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
-                    await v_session.execute(
+                    vac_row = await v_session.execute(
                         text("""
                             INSERT INTO vacancies (org_id, avito_account_id, avito_item_id, title, location, status, synced_at)
                             VALUES (
@@ -364,6 +364,7 @@ async def handle_new_response(
                                 title      = EXCLUDED.title,
                                 location   = COALESCE(EXCLUDED.location, vacancies.location),
                                 synced_at  = now()
+                            RETURNING id
                         """),
                         {
                             "org_id": str(_org_id),
@@ -373,7 +374,22 @@ async def handle_new_response(
                             "location": vacancy_location,
                         },
                     )
+                    vacancy_uuid = vac_row.scalar_one_or_none()
                     await v_session.commit()
+
+                # Привязать кандидата к вакансии через vacancy_id FK
+                if vacancy_uuid and candidate_id:
+                    async with session_factory() as c_session:
+                        await c_session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                        await c_session.execute(
+                            text("""
+                                UPDATE candidates
+                                SET vacancy_id = CAST(:vacancy_id AS UUID)
+                                WHERE id = CAST(:candidate_id AS UUID)
+                            """),
+                            {"vacancy_id": str(vacancy_uuid), "candidate_id": str(candidate_id)},
+                        )
+                        await c_session.commit()
             except Exception:
                 logger.warning("handle_new_response: failed to upsert vacancy item_id=%s", avito_item_id)
 
@@ -536,6 +552,59 @@ async def handle_new_message(
             return
 
         # ------------------------------------------------------------------
+        # Извлечь контент сообщения (text, image, voice, geo, video, file, link, system)
+        # ------------------------------------------------------------------
+        if message_type_raw == "system":
+            sys_text = (value.get("content") or {}).get("text") or value.get("text") or "Системное сообщение"
+            message_text, message_type = sys_text, "text"
+        else:
+            message_text, message_type = _extract_message_content(value)
+
+        # ------------------------------------------------------------------
+        # Сохранить сообщение в chat_messages
+        # ------------------------------------------------------------------
+        async with session_factory() as session:
+            from sqlalchemy import text
+
+            await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+
+            cand2_result = await session.execute(
+                text("SELECT id FROM candidates WHERE org_id = CAST(:org_id AS UUID) AND chat_id = :chat_id LIMIT 1"),
+                {"org_id": str(_org_id), "chat_id": chat_id},
+            )
+            cand2_row = cand2_result.fetchone()
+            _existing_candidate_id = cand2_row[0] if cand2_row else None
+
+            if _existing_candidate_id and avito_message_id and chat_id:
+                await session.execute(
+                    text("""
+                        INSERT INTO chat_messages (
+                            org_id, candidate_id, chat_id, avito_message_id,
+                            content, message_type, author_type, created_at
+                        )
+                        SELECT
+                            CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id,
+                            :avito_message_id, :content, :message_type, 'candidate',
+                            COALESCE(CAST(:created_at AS TIMESTAMPTZ), now())
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM chat_messages
+                            WHERE avito_message_id = CAST(:avito_message_id AS VARCHAR)
+                              AND avito_message_id IS NOT NULL
+                        )
+                    """),
+                    {
+                        "org_id": str(_org_id),
+                        "candidate_id": str(_existing_candidate_id),
+                        "chat_id": chat_id,
+                        "avito_message_id": avito_message_id,
+                        "content": message_text,
+                        "message_type": message_type,
+                        "created_at": created_at_ts or None,
+                    },
+                )
+                await session.commit()
+
+        # ------------------------------------------------------------------
         # System-сообщение — возможный отклик через messages webhook
         # ------------------------------------------------------------------
         if message_type_raw == "system":
@@ -544,11 +613,6 @@ async def handle_new_message(
                 chat_id, value, account_avito_user_id,
             )
             return
-
-        # ------------------------------------------------------------------
-        # Обычное сообщение от кандидата
-        # ------------------------------------------------------------------
-        message_text, message_type = _extract_message_content(value)
 
         async with session_factory() as session:
             from sqlalchemy import text
@@ -1014,6 +1078,40 @@ async def _handle_system_message(
             )
 
         await session.commit()
+
+    # Upsert vacancy + привязка candidate.vacancy_id
+    if avito_item_id and vacancy_title and candidate_id:
+        try:
+            from sqlalchemy import text
+            async with session_factory() as v_session:
+                await v_session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                vac_row = await v_session.execute(
+                    text("""
+                        INSERT INTO vacancies (org_id, avito_account_id, avito_item_id, title, location, status, synced_at)
+                        VALUES (CAST(:org_id AS UUID), CAST(:account_id AS UUID), :avito_item_id, :title, :location, 'active', now())
+                        ON CONFLICT (org_id, avito_item_id) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            location = COALESCE(EXCLUDED.location, vacancies.location),
+                            synced_at = now()
+                        RETURNING id
+                    """),
+                    {
+                        "org_id": str(org_id), "account_id": str(account_id),
+                        "avito_item_id": avito_item_id, "title": vacancy_title, "location": vacancy_location,
+                    },
+                )
+                vacancy_uuid = vac_row.scalar_one_or_none()
+                await v_session.commit()
+            if vacancy_uuid:
+                async with session_factory() as c_session:
+                    await c_session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                    await c_session.execute(
+                        text("UPDATE candidates SET vacancy_id = CAST(:vid AS UUID) WHERE id = CAST(:cid AS UUID)"),
+                        {"vid": str(vacancy_uuid), "cid": str(candidate_id)},
+                    )
+                    await c_session.commit()
+        except Exception:
+            logger.warning("_handle_system_message: failed to link vacancy item_id=%s", avito_item_id)
 
     if candidate_id:
         # Инвалидация кеша кандидатов

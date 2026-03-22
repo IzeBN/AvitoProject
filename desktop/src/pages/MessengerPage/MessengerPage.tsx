@@ -48,12 +48,10 @@ const CandidatePanel = ({ candidateId, onClose, onNavigate }: CandidatePanelProp
             <span className="mp-cpanel-value">{candidate.phone ?? '—'}</span>
           </div>
 
-          {candidate.location && (
-            <div className="mp-cpanel-field">
-              <span className="mp-cpanel-label">Город / Локация</span>
-              <span className="mp-cpanel-value">{candidate.location}</span>
-            </div>
-          )}
+          <div className="mp-cpanel-field">
+            <span className="mp-cpanel-label">Город / Локация</span>
+            <span className="mp-cpanel-value">{candidate.location ?? '—'}</span>
+          </div>
 
           <div className="mp-cpanel-field">
             <span className="mp-cpanel-label">Вакансия</span>

@@ -3,6 +3,7 @@ export interface Candidate {
   name: string | null
   phone: string | null
   vacancy: string | null
+  vacancy_id: string | null
   location: string | null
   stage: { id: string; name: string; color: string | null } | null
   department: { id: string; name: string } | null

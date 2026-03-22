@@ -647,6 +647,7 @@ async def sync_messages(
     added = 0
     from datetime import timezone as _tz
     from sqlalchemy import text as sa_text
+    from app.workers.webhook_worker import _extract_message_content
 
     for msg in messages:
         avito_message_id = str(msg.get("id") or "")
@@ -654,18 +655,7 @@ async def sync_messages(
             continue
 
         # Определяем тип и контент
-        raw_type: str = msg.get("type", "text") or "text"
-        content_block: dict = msg.get("content") or {}
-        if raw_type == "text":
-            content_text = content_block.get("text") or msg.get("text") or ""
-            message_type = "text"
-        elif raw_type == "image":
-            sizes = content_block.get("image", {}).get("sizes", {})
-            content_text = sizes.get("1280x960") or sizes.get("640x480") or ""
-            message_type = "image"
-        else:
-            content_text = content_block.get("text") or ""
-            message_type = "text"
+        content_text, message_type = _extract_message_content(msg)
 
         # Автор
         author_id = msg.get("author_id")

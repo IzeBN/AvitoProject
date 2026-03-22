@@ -152,6 +152,11 @@ class Candidate(Base, TimestampMixin, SoftDeleteMixin):
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     vacancy: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    vacancy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vacancies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
@@ -175,6 +180,11 @@ class Candidate(Base, TimestampMixin, SoftDeleteMixin):
     responsible: Mapped["User | None"] = relationship(
         "User",
         foreign_keys=[responsible_id],
+        lazy="raise",
+    )
+    vacancy_obj: Mapped["Vacancy | None"] = relationship(
+        "Vacancy",
+        foreign_keys="[Candidate.vacancy_id]",
         lazy="raise",
     )
     tags: Mapped[list["CandidateTag"]] = relationship(
