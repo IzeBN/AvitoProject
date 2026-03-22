@@ -4,6 +4,18 @@ import { useAuthStore } from '@/stores/auth.store'
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1',
   timeout: 30_000,
+  paramsSerializer: (params) => {
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null) continue
+      if (Array.isArray(value)) {
+        value.forEach(v => parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`))
+      } else {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      }
+    }
+    return parts.join('&')
+  },
 })
 
 // Добавляем Bearer-токен к каждому запросу

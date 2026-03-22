@@ -679,7 +679,13 @@ async def get_org_settings(
 ) -> OrgSettingsResponse:
     org_id = request.state.org_id
     auto_tag_id = await redis.get(f"org:{org_id}:auto_tag_id")
-    return OrgSettingsResponse(auto_tag_id=auto_tag_id.decode() if auto_tag_id else None)
+    if auto_tag_id is None:
+        decoded_tag_id = None
+    elif isinstance(auto_tag_id, bytes):
+        decoded_tag_id = auto_tag_id.decode()
+    else:
+        decoded_tag_id = auto_tag_id
+    return OrgSettingsResponse(auto_tag_id=decoded_tag_id)
 
 
 @router.put(

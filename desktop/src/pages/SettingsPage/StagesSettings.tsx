@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { useUIStore } from '@/stores/ui.store'
-import { Plus, Trash2, GripVertical, Check } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Check, Star } from 'lucide-react'
 
 const PRESET_COLORS = [
   '#3b82f6', '#22c55e', '#f59e0b', '#ef4444',
@@ -70,6 +70,16 @@ export default function StagesSettings() {
       setDeleteConfirmId(null)
     },
     onError: () => showToast('error', 'Не удалось удалить этап'),
+  })
+
+  const setDefaultStage = useMutation({
+    mutationFn: (id: string) => settingsApi.setDefaultStage(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['settings', 'stages'] })
+      void qc.invalidateQueries({ queryKey: ['candidates', 'stages'] })
+      showToast('success', 'Этап по умолчанию обновлён')
+    },
+    onError: () => showToast('error', 'Не удалось обновить этап по умолчанию'),
   })
 
   const reorderStages = useMutation({
@@ -257,6 +267,23 @@ export default function StagesSettings() {
                 ))}
               </div>
 
+              <button
+                title={stage.is_default ? 'Этап по умолчанию' : 'Сделать этапом по умолчанию'}
+                onClick={() => { if (!stage.is_default) setDefaultStage.mutate(stage.id) }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: stage.is_default ? 'default' : 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: stage.is_default ? '#f59e0b' : 'var(--color-text-secondary)',
+                  opacity: setDefaultStage.isPending ? 0.5 : 1,
+                }}
+              >
+                <Star size={15} fill={stage.is_default ? '#f59e0b' : 'none'} />
+              </button>
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -270,7 +297,7 @@ export default function StagesSettings() {
       )}
 
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-        Перетащите этапы чтобы изменить порядок. Двойной клик по названию — редактировать.
+        Перетащите этапы чтобы изменить порядок. Двойной клик по названию — редактировать. Звёздочка — этап по умолчанию для новых кандидатов.
       </p>
 
       {/* Add modal */}

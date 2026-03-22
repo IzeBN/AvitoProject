@@ -7,7 +7,8 @@ export function useVacancies() {
   return useQuery({
     queryKey: VACANCIES_KEY,
     queryFn: () => vacanciesApi.getList(),
-    staleTime: 60_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 

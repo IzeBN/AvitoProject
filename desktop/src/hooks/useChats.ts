@@ -19,8 +19,8 @@ export function useChatList(params?: ChatListParams) {
   return useQuery({
     queryKey: chatKeys.list(params),
     queryFn: () => chatApi.getList(params),
-    staleTime: 10_000,
-    refetchInterval: 30_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 

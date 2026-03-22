@@ -14,7 +14,8 @@ export function useCandidates(filters: CandidateFilters, page: number) {
     queryKey: candidateKeys.list(filters, page),
     queryFn: () => candidatesApi.getList(filters, page),
     placeholderData: prev => prev,
-    staleTime: 15_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 

@@ -6,12 +6,18 @@ export const mailingKeys = {
   detail: (id: string) => ['mailing', id] as const,
 }
 
+const ACTIVE_STATUSES = new Set(['running', 'pending', 'pausing'])
+
 export function useMailings() {
   return useQuery({
     queryKey: mailingKeys.all,
     queryFn: () => mailingsApi.getList(),
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 2_000,
+    refetchInterval: (query) => {
+      const items = query.state.data as { status: string }[] | undefined
+      const hasActive = items?.some(m => ACTIVE_STATUSES.has(m.status))
+      return hasActive ? 3_000 : 30_000
+    },
   })
 }
 

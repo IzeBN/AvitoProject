@@ -222,10 +222,10 @@ class AvitoAPIClient:
         user_id: int,
         chat_id: str,
     ) -> dict:
-        """Получить информацию о пользователе из чата."""
+        """Получить информацию о чате (участники, контекст вакансии)."""
         data = await self._request(
             "GET",
-            f"/messenger/v1/accounts/{user_id}/chats/{chat_id}",
+            f"/messenger/v2/accounts/{user_id}/chats/{chat_id}",
             account,
         )
         return data

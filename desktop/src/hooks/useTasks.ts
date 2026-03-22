@@ -7,7 +7,8 @@ export function useTasks(params?: { status?: string; assignee_id?: string }) {
   return useQuery({
     queryKey: [...TASKS_KEY, params],
     queryFn: () => tasksApi.getList(params),
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 

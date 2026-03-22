@@ -108,13 +108,16 @@ async def handle_new_response(
         candidate_name: str = value.get("name", "") or payload.get("name", "") or ""
         phone_raw: str | None = value.get("phone") or payload.get("phone")
 
-        # --- Обогащение через Avito API по applyId ---
+        # --- Обогащение через Avito API ---
         apply_id: str | None = str(payload.get("applyId") or payload.get("apply_id") or "").strip() or None
         vacancy_title: str | None = None
         vacancy_location: str | None = None
+        _enriched = False
 
-        avito_client = ctx.get("avito_client")
-        if apply_id and avito_client:
+        avito_client = _get_avito_client(ctx)
+
+        # Шаг 1: обогащение по applyId через /job/v2/applications/{apply_id}
+        if apply_id:
             try:
                 async with session_factory() as _sess:
                     from sqlalchemy import text as _text
@@ -138,29 +141,89 @@ async def handle_new_response(
                     contacts = app_data.get("contacts") or {}
                     vacancy_data = app_data.get("vacancy") or {}
 
-                    # Имя кандидата (API надёжнее payload)
+                    # Имя кандидата — API надёжнее payload
                     api_name = (applicant.get("data") or {}).get("name") or ""
                     if api_name:
                         candidate_name = api_name
 
-                    # Телефон (берём из API, если не пришёл в payload)
+                    # avito_user_id кандидата
+                    api_avito_user_id = applicant.get("id")
+                    if api_avito_user_id and not avito_user_id:
+                        avito_user_id = int(api_avito_user_id)
+
+                    # Телефон
                     phones = contacts.get("phones") or []
                     if phones and not phone_raw:
                         phone_raw = (phones[0] or {}).get("value")
 
-                    # chat_id из contacts если не пришёл в payload
+                    # chat_id
                     api_chat_id = (contacts.get("chat") or {}).get("value") or ""
-                    if api_chat_id and not chat_id:
+                    if api_chat_id:
                         chat_id = api_chat_id
 
                     # Вакансия
                     vacancy_title = vacancy_data.get("title") or None
                     vacancy_location = (vacancy_data.get("addressDetails") or {}).get("city") or None
                     api_item_id = vacancy_data.get("id")
-                    if api_item_id and not avito_item_id:
+                    if api_item_id:
                         avito_item_id = int(api_item_id)
+
+                    _enriched = bool(candidate_name or chat_id)
+                    logger.info(
+                        "handle_new_response: enriched via apply_id=%s name=%s chat_id=%s",
+                        apply_id, candidate_name, chat_id,
+                    )
             except Exception:
-                logger.warning("handle_new_response: failed to enrich via Avito API apply_id=%s", apply_id)
+                logger.warning(
+                    "handle_new_response: apply enrichment failed apply_id=%s",
+                    apply_id, exc_info=True,
+                )
+
+        # Шаг 2: fallback через /messenger/v2 если apply_id не дал данных, но есть chat_id
+        if not _enriched and chat_id:
+            try:
+                async with session_factory() as _sess2:
+                    from sqlalchemy import text as _text2
+                    _acc2 = (await _sess2.execute(
+                        _text2("SELECT client_id_enc, client_secret_enc, avito_user_id FROM avito_accounts WHERE id = CAST(:id AS UUID)"),
+                        {"id": str(_account_id)},
+                    )).fetchone()
+
+                if _acc2:
+                    from app.models.avito import AvitoAccount as _AvitoAccount2
+                    _fa2 = _AvitoAccount2.__new__(_AvitoAccount2)
+                    _fa2.id = _account_id
+                    _fa2.org_id = _org_id
+                    _fa2.client_id_enc = _acc2[0]
+                    _fa2.client_secret_enc = _acc2[1]
+                    _fa2.avito_user_id = _acc2[2]
+
+                    chat_data = await avito_client.get_user_info(_fa2, _acc2[2], chat_id)
+                    if chat_data:
+                        _users = chat_data.get("users") or []
+                        for _u in _users:
+                            if _u.get("id") and _u.get("id") != _acc2[2]:
+                                if not candidate_name:
+                                    candidate_name = _u.get("name") or ""
+                                if not avito_user_id:
+                                    avito_user_id = _u.get("id")
+                                break
+                        _ctx_val = (chat_data.get("context") or {}).get("value") or {}
+                        if not vacancy_title:
+                            vacancy_title = _ctx_val.get("title") or None
+                        if not vacancy_location:
+                            vacancy_location = (_ctx_val.get("location") or {}).get("title") or None
+                        if not avito_item_id:
+                            avito_item_id = _ctx_val.get("id") or 0
+                        logger.info(
+                            "handle_new_response: messenger fallback chat_id=%s name=%s",
+                            chat_id, candidate_name,
+                        )
+            except Exception:
+                logger.warning(
+                    "handle_new_response: messenger fallback failed chat_id=%s",
+                    chat_id, exc_info=True,
+                )
 
         async with session_factory() as session:
             from sqlalchemy import text
@@ -304,9 +367,9 @@ async def handle_new_response(
 
         # Применить авто-тег к новому кандидату
         if candidate_id:
-            auto_tag_id_bytes = await redis.get(f"org:{org_id}:auto_tag_id")
-            if auto_tag_id_bytes:
-                auto_tag_id_str = auto_tag_id_bytes.decode()
+            auto_tag_id_raw = await redis.get(f"org:{org_id}:auto_tag_id")
+            if auto_tag_id_raw:
+                auto_tag_id_str = auto_tag_id_raw if isinstance(auto_tag_id_raw, str) else auto_tag_id_raw.decode()
                 try:
                     async with session_factory() as session:
                         from sqlalchemy import text
@@ -579,7 +642,7 @@ async def handle_new_message(
         if is_new_candidate and candidate_id:
             auto_tag_id_bytes = await redis.get(f"org:{org_id}:auto_tag_id")
             if auto_tag_id_bytes:
-                auto_tag_id_str = auto_tag_id_bytes.decode()
+                auto_tag_id_str = auto_tag_id_bytes if isinstance(auto_tag_id_bytes, str) else auto_tag_id_bytes.decode()
                 try:
                     async with session_factory() as session:
                         from sqlalchemy import text
@@ -820,26 +883,28 @@ async def _handle_system_message(
     session_factory = ctx["session_factory"]
     redis = ctx["redis"]
 
-    # Попробовать получить данные кандидата через Avito API
+    # Получить данные кандидата через /messenger/v2 (как VectorBot)
     candidate_avito_user_id: int = value.get("user_id") or 0
     candidate_name: str | None = None
     avito_item_id: int = 0
+    vacancy_title: str | None = None
+    vacancy_location: str | None = None
 
     if account_avito_user_id and chat_id:
         try:
             chat_data = await _fetch_chat_info(ctx, account_id, account_avito_user_id, chat_id)
             if chat_data:
-                candidate_name = chat_data.get("users", [{}])[0].get("name") if chat_data.get("users") else None
-                # item_id из context
-                context = chat_data.get("context", {})
-                avito_item_id = context.get("value", {}).get("id") or 0
-                if not candidate_avito_user_id:
-                    users = chat_data.get("users", [])
-                    for u in users:
-                        uid = u.get("id")
-                        if uid and uid != account_avito_user_id:
-                            candidate_avito_user_id = uid
-                            break
+                # Имя кандидата — первый user, который не наш аккаунт
+                for _u in (chat_data.get("users") or []):
+                    if _u.get("id") and _u.get("id") != account_avito_user_id:
+                        candidate_name = _u.get("name") or None
+                        candidate_avito_user_id = candidate_avito_user_id or _u.get("id") or 0
+                        break
+                # Вакансия и локация из context.value
+                _ctx_val = (chat_data.get("context") or {}).get("value") or {}
+                avito_item_id = _ctx_val.get("id") or 0
+                vacancy_title = _ctx_val.get("title") or None
+                vacancy_location = (_ctx_val.get("location") or {}).get("title") or None
         except Exception:
             logger.warning(
                 "_handle_system_message: api fetch failed chat_id=%s", chat_id,
@@ -851,23 +916,36 @@ async def _handle_system_message(
 
         await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
 
+        # Получаем default stage
+        stage_result = await session.execute(
+            text("SELECT id FROM pipeline_stages WHERE org_id = CAST(:org_id AS UUID) AND is_default = true LIMIT 1"),
+            {"org_id": str(org_id)},
+        )
+        stage_row = stage_result.fetchone()
+        default_stage_id = str(stage_row[0]) if stage_row and stage_row[0] else None
+
         cand_result = await session.execute(
             text("""
                 INSERT INTO candidates (
                     org_id, avito_account_id, chat_id, avito_user_id, avito_item_id,
-                    name, source, has_new_message, department_id
+                    name, source, has_new_message, department_id, stage_id,
+                    vacancy, location
                 ) VALUES (
                     CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id,
                     :avito_user_id, :avito_item_id, :name,
-                    'avito', true, CAST(NULLIF(:department_id, '') AS UUID)
+                    'avito', true, CAST(NULLIF(:department_id, '') AS UUID),
+                    CAST(NULLIF(:stage_id, '') AS UUID),
+                    :vacancy, :location
                 )
                 ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL
                 DO UPDATE SET
-                    avito_user_id = COALESCE(EXCLUDED.avito_user_id, candidates.avito_user_id),
-                    avito_item_id = COALESCE(EXCLUDED.avito_item_id, candidates.avito_item_id),
-                    name          = COALESCE(EXCLUDED.name, candidates.name),
+                    avito_user_id   = COALESCE(EXCLUDED.avito_user_id, candidates.avito_user_id),
+                    avito_item_id   = COALESCE(EXCLUDED.avito_item_id, candidates.avito_item_id),
+                    name            = COALESCE(EXCLUDED.name, candidates.name),
+                    vacancy         = COALESCE(EXCLUDED.vacancy, candidates.vacancy),
+                    location        = COALESCE(EXCLUDED.location, candidates.location),
                     has_new_message = true,
-                    updated_at    = now()
+                    updated_at      = now()
                 RETURNING id
             """),
             {
@@ -878,6 +956,9 @@ async def _handle_system_message(
                 "avito_item_id": avito_item_id or None,
                 "name": candidate_name,
                 "department_id": account_department_id,
+                "stage_id": default_stage_id,
+                "vacancy": vacancy_title,
+                "location": vacancy_location,
             },
         )
         row = cand_result.fetchone()
@@ -886,11 +967,19 @@ async def _handle_system_message(
         if candidate_id:
             await session.execute(
                 text("""
-                    INSERT INTO chat_metadata (org_id, candidate_id, chat_id, unread_count)
-                    VALUES (CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1)
+                    INSERT INTO chat_metadata (
+                        org_id, candidate_id, chat_id, unread_count,
+                        last_message, last_message_at
+                    )
+                    VALUES (
+                        CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1,
+                        'Кандидат откликнулся на вакансию', now()
+                    )
                     ON CONFLICT (chat_id) DO UPDATE SET
-                        unread_count = chat_metadata.unread_count + 1,
-                        updated_at = now()
+                        unread_count    = chat_metadata.unread_count + 1,
+                        last_message    = COALESCE(chat_metadata.last_message, 'Кандидат откликнулся на вакансию'),
+                        last_message_at = COALESCE(chat_metadata.last_message_at, now()),
+                        updated_at      = now()
                 """),
                 {"org_id": str(org_id), "candidate_id": str(candidate_id), "chat_id": chat_id},
             )
@@ -992,9 +1081,11 @@ async def _enrich_candidate_from_api(
             candidate_avito_user_id = uid
             break
 
-    # item_id из context
-    context = chat_data.get("context", {})
-    avito_item_id: int | None = context.get("value", {}).get("id") or None
+    # item_id, vacancy_title, location из context.value
+    ctx_val = (chat_data.get("context") or {}).get("value") or {}
+    avito_item_id: int | None = ctx_val.get("id") or None
+    vacancy_title: str | None = ctx_val.get("title") or None
+    vacancy_location: str | None = (ctx_val.get("location") or {}).get("title") or None
 
     if not candidate_name and not candidate_avito_user_id and not avito_item_id:
         return
@@ -1006,16 +1097,20 @@ async def _enrich_candidate_from_api(
         await session.execute(
             text("""
                 UPDATE candidates
-                SET name           = COALESCE(:name, name),
-                    avito_user_id  = COALESCE(:avito_user_id, avito_user_id),
-                    avito_item_id  = COALESCE(:avito_item_id, avito_item_id),
-                    updated_at     = now()
+                SET name          = COALESCE(:name, name),
+                    avito_user_id = COALESCE(:avito_user_id, avito_user_id),
+                    avito_item_id = COALESCE(:avito_item_id, avito_item_id),
+                    vacancy       = COALESCE(:vacancy, vacancy),
+                    location      = COALESCE(:location, location),
+                    updated_at    = now()
                 WHERE id = CAST(:candidate_id AS UUID)
             """),
             {
                 "name": candidate_name,
                 "avito_user_id": candidate_avito_user_id,
                 "avito_item_id": avito_item_id,
+                "vacancy": vacancy_title,
+                "location": vacancy_location,
                 "candidate_id": str(candidate_id),
             },
         )

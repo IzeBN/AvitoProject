@@ -5,6 +5,7 @@ export interface Stage {
   name: string
   color: string | null
   order: number
+  is_default?: boolean
 }
 
 export interface Tag {
@@ -31,6 +32,8 @@ export const settingsApi = {
     apiClient.delete(`/settings/stages/${id}`).then(r => r.data),
   reorderStages: (ids: string[]) =>
     apiClient.post('/settings/stages/reorder', { ids }).then(r => r.data),
+  setDefaultStage: (id: string) =>
+    apiClient.post(`/candidates/stages/${id}/set-default`).then(r => r.data),
 
   // Теги
   getTags: () =>
