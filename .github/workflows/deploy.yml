@@ -24,11 +24,11 @@ jobs:
             cd ./responscrm
 
             echo "→ Pull latest code"
+            git stash
             git pull origin master
 
             echo "→ Build & restart services"
-            docker compose pull --ignore-buildable
-            docker compose build --no-cache
+            docker compose build
             docker compose up -d --remove-orphans
 
             echo "→ Remove dangling images"
