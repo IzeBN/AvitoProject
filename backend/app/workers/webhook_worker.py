@@ -13,6 +13,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Системные сообщения с этими flow_id считаются откликами
+_RESPONSE_FLOWS = {"job", "job_apply_enrichment"}
+
+# Фразы в системном сообщении, подтверждающие отклик
+_RESPONSE_TRIGGERS = ["кандидат откликнулся", "кандидат посмотрел ваш телефон"]
+
+
+def _extract_message_content(value: dict) -> tuple[str, str]:
+    """
+    Вернуть (content_text, message_type) по payload value.
+    Обрабатывает все типы: text, image, location, video, voice, call, link, system.
+    """
+    raw_type: str = value.get("type", "text") or "text"
+    content: dict = value.get("content") or {}
+
+    if raw_type == "text":
+        text = content.get("text") or value.get("text") or ""
+        return text, "text"
+
+    if raw_type == "image":
+        sizes = content.get("image", {}).get("sizes", {})
+        url = sizes.get("1280x960") or sizes.get("640x480") or ""
+        return url, "image"
+
+    if raw_type == "location":
+        text = content.get("location", {}).get("text") or "Геолокация"
+        return text, "text"
+
+    if raw_type == "video":
+        return "Видео", "text"
+
+    if raw_type == "voice":
+        return "Голосовое сообщение", "text"
+
+    if raw_type == "call":
+        return "Вызов", "text"
+
+    if raw_type == "link":
+        link = content.get("link", {})
+        url = link.get("url") or link.get("text") or "Ссылка"
+        return url, "link"
+
+    # file и прочие неизвестные типы
+    text = content.get("text") or ""
+    return text, "file"
+
 
 async def handle_new_response(
     ctx: dict,
@@ -21,7 +67,7 @@ async def handle_new_response(
     payload: dict,
 ) -> None:
     """
-    Новый отклик от Avito.
+    Новый отклик от Avito (через /responses webhook).
     1. Расшифровать phone из payload если есть
     2. Upsert candidate (ON CONFLICT org_id, chat_id)
     3. Создать chat_metadata запись
@@ -194,12 +240,14 @@ async def handle_new_message(
 ) -> None:
     """
     Новое сообщение в чате.
-    1. Найти candidate по (org_id, chat_id)
-    2. INSERT chat_messages
-    3. Write-behind: update chat_metadata (last_message, unread_count+1, last_message_at)
-    4. Write-behind: candidate.has_new_message = True
-    5. WebSocket broadcast: {type: 'new_message', ...}
-    6. Инвалидировать кеш: chat_msgs:{chat_id}:*
+
+    Логика:
+    - Пропустить собственные сообщения аккаунта (author_id == account.avito_user_id)
+    - System-сообщения с flow_id 'job'/'job_apply_enrichment' и триггер-текстом
+      обрабатываются как отклик (upsert кандидата + авто-ответ)
+    - Прочие системные сообщения игнорируются
+    - Обычные сообщения: INSERT chat_messages, write-behind chat_metadata, WS broadcast
+    - Контент извлекается по типу: text, image (URL), location, video, voice, call, link
     """
     import uuid
 
@@ -208,14 +256,15 @@ async def handle_new_message(
 
     try:
         _org_id = uuid.UUID(org_id)
+        _account_id = uuid.UUID(avito_account_id)
 
         # Avito присылает вложенную структуру: {payload: {type: "message", value: {...}}}
         value = payload.get("payload", {}).get("value", payload)
 
         chat_id: str = value.get("chat_id", "") or payload.get("chat_id", "")
-        message_text: str = value.get("content", {}).get("text", "") or value.get("text", "") or ""
-        message_type: str = value.get("type", "text")
+        message_type_raw: str = value.get("type", "text") or "text"
         avito_message_id: str = str(value.get("id", "") or payload.get("id", ""))
+        author_id = value.get("author_id")
 
         # created — Unix timestamp (int) или ISO строка
         from datetime import datetime, timezone
@@ -235,7 +284,44 @@ async def handle_new_message(
 
             await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
 
-            # Найти candidate — если нет, создать (первое сообщение без отклика)
+            # Загрузить данные аккаунта: avito_user_id + department_id
+            acc_result = await session.execute(
+                text("SELECT avito_user_id, department_id FROM avito_accounts WHERE id = CAST(:account_id AS UUID)"),
+                {"account_id": str(_account_id)},
+            )
+            acc_row = acc_result.fetchone()
+            account_avito_user_id: int | None = acc_row[0] if acc_row else None
+            account_department_id: str | None = str(acc_row[1]) if acc_row and acc_row[1] else None
+
+        # Пропустить собственные сообщения аккаунта
+        if account_avito_user_id and author_id and int(author_id) == account_avito_user_id:
+            logger.debug(
+                "handle_new_message: skip own message chat_id=%s author_id=%s",
+                chat_id, author_id,
+            )
+            return
+
+        # ------------------------------------------------------------------
+        # System-сообщение — возможный отклик через messages webhook
+        # ------------------------------------------------------------------
+        if message_type_raw == "system":
+            await _handle_system_message(
+                ctx, _org_id, _account_id, account_department_id,
+                chat_id, value, account_avito_user_id,
+            )
+            return
+
+        # ------------------------------------------------------------------
+        # Обычное сообщение от кандидата
+        # ------------------------------------------------------------------
+        message_text, message_type = _extract_message_content(value)
+
+        async with session_factory() as session:
+            from sqlalchemy import text
+
+            await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+
+            # Найти candidate — если нет, создать
             cand_result = await session.execute(
                 text("""
                     SELECT id FROM candidates
@@ -246,19 +332,9 @@ async def handle_new_message(
             )
             cand_row = cand_result.fetchone()
             candidate_id = cand_row[0] if cand_row else None
-
-            _account_id = uuid.UUID(avito_account_id)
+            is_new_candidate = candidate_id is None
 
             if candidate_id is None and chat_id:
-                # Получаем department_id аккаунта
-                dept_result = await session.execute(
-                    text("SELECT department_id FROM avito_accounts WHERE id = CAST(:account_id AS UUID)"),
-                    {"account_id": str(_account_id)},
-                )
-                dept_row = dept_result.fetchone()
-                account_department_id = str(dept_row[0]) if dept_row and dept_row[0] else None
-
-                # Upsert кандидата
                 new_cand = await session.execute(
                     text("""
                         INSERT INTO candidates (
@@ -283,7 +359,7 @@ async def handle_new_message(
                 new_row = new_cand.fetchone()
                 candidate_id = new_row[0] if new_row else None
 
-                # Upsert chat_metadata
+                # Upsert chat_metadata для нового кандидата
                 if candidate_id:
                     await session.execute(
                         text("""
@@ -296,7 +372,7 @@ async def handle_new_message(
                         {"org_id": str(_org_id), "candidate_id": str(candidate_id), "chat_id": chat_id},
                     )
 
-            # INSERT chat_messages
+            # INSERT chat_messages (дедуп через WHERE NOT EXISTS)
             if candidate_id and chat_id:
                 await session.execute(
                     text("""
@@ -327,6 +403,23 @@ async def handle_new_message(
 
             await session.commit()
 
+        if not candidate_id:
+            logger.warning("handle_new_message: no candidate_id, chat_id=%s", chat_id)
+            return
+
+        # Попытаться обогатить нового кандидата данными из Avito API
+        if is_new_candidate:
+            try:
+                await _enrich_candidate_from_api(
+                    ctx, session_factory, _org_id, _account_id,
+                    candidate_id, chat_id, account_avito_user_id,
+                )
+            except Exception:
+                logger.warning(
+                    "handle_new_message: enrich failed chat_id=%s", chat_id,
+                    exc_info=True,
+                )
+
         # Write-behind: chat_metadata
         from app.services.cache import CacheService
 
@@ -335,16 +428,14 @@ async def handle_new_message(
             chat_id,
             {
                 "last_message": message_text[:200],
-                "unread_count": "increment",  # flush_write_behind обработает
+                "unread_count": "increment",
                 "last_message_at": created_at_ts,
             },
         )
-
-        if candidate_id:
-            await cache.wb_update_candidate_flags(
-                candidate_id,
-                {"has_new_message": "true"},
-            )
+        await cache.wb_update_candidate_flags(
+            candidate_id,
+            {"has_new_message": "true"},
+        )
 
         # Инвалидация кеша сообщений
         await cache.invalidate_chat(chat_id)
@@ -352,20 +443,20 @@ async def handle_new_message(
         # WebSocket broadcast
         from app.routers.ws import ws_manager
 
-        if candidate_id:
+        if is_new_candidate:
             await ws_manager.broadcast_org(
                 _org_id,
                 {"type": "new_candidate", "candidate_id": str(candidate_id)},
             )
-            await ws_manager.broadcast_org(
-                _org_id,
-                {
-                    "type": "new_message",
-                    "candidate_id": str(candidate_id),
-                    "chat_id": chat_id,
-                    "message": {"text": message_text, "type": message_type},
-                },
-            )
+        await ws_manager.broadcast_org(
+            _org_id,
+            {
+                "type": "new_message",
+                "candidate_id": str(candidate_id),
+                "chat_id": chat_id,
+                "message": {"text": message_text, "type": message_type},
+            },
+        )
 
     except Exception:
         logger.exception(
@@ -479,8 +570,270 @@ async def handle_chat_blocked(
 
 
 # ------------------------------------------------------------------
-# Helpers
+# Internal helpers
 # ------------------------------------------------------------------
+
+async def _handle_system_message(
+    ctx: dict,
+    org_id,
+    account_id,
+    account_department_id: str | None,
+    chat_id: str,
+    value: dict,
+    account_avito_user_id: int | None,
+) -> None:
+    """
+    Обработка системного сообщения.
+    Если flow_id == 'job'/'job_apply_enrichment' и текст содержит триггер —
+    это отклик: upsert кандидата, отправить авто-ответ (если настроен).
+    """
+    content: dict = value.get("content") or {}
+    flow_id: str = content.get("flow_id") or ""
+    text_body: str = (content.get("text") or "").lower()
+
+    if flow_id not in _RESPONSE_FLOWS:
+        logger.debug(
+            "_handle_system_message: skip flow_id=%s chat_id=%s", flow_id, chat_id
+        )
+        return
+
+    is_trigger = any(t in text_body for t in _RESPONSE_TRIGGERS)
+    if not is_trigger:
+        logger.debug(
+            "_handle_system_message: no trigger chat_id=%s text=%s", chat_id, text_body[:80]
+        )
+        return
+
+    session_factory = ctx["session_factory"]
+    redis = ctx["redis"]
+
+    # Попробовать получить данные кандидата через Avito API
+    candidate_avito_user_id: int = value.get("user_id") or 0
+    candidate_name: str | None = None
+    avito_item_id: int = 0
+
+    if account_avito_user_id and chat_id:
+        try:
+            chat_data = await _fetch_chat_info(ctx, account_id, account_avito_user_id, chat_id)
+            if chat_data:
+                candidate_name = chat_data.get("users", [{}])[0].get("name") if chat_data.get("users") else None
+                # item_id из context
+                context = chat_data.get("context", {})
+                avito_item_id = context.get("value", {}).get("id") or 0
+                if not candidate_avito_user_id:
+                    users = chat_data.get("users", [])
+                    for u in users:
+                        uid = u.get("id")
+                        if uid and uid != account_avito_user_id:
+                            candidate_avito_user_id = uid
+                            break
+        except Exception:
+            logger.warning(
+                "_handle_system_message: api fetch failed chat_id=%s", chat_id,
+                exc_info=True,
+            )
+
+    async with session_factory() as session:
+        from sqlalchemy import text
+
+        await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+
+        cand_result = await session.execute(
+            text("""
+                INSERT INTO candidates (
+                    org_id, avito_account_id, chat_id, avito_user_id, avito_item_id,
+                    name, source, has_new_message, department_id
+                ) VALUES (
+                    CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id,
+                    :avito_user_id, :avito_item_id, :name,
+                    'avito', true, CAST(NULLIF(:department_id, '') AS UUID)
+                )
+                ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL
+                DO UPDATE SET
+                    avito_user_id = COALESCE(EXCLUDED.avito_user_id, candidates.avito_user_id),
+                    avito_item_id = COALESCE(EXCLUDED.avito_item_id, candidates.avito_item_id),
+                    name          = COALESCE(EXCLUDED.name, candidates.name),
+                    has_new_message = true,
+                    updated_at    = now()
+                RETURNING id
+            """),
+            {
+                "org_id": str(org_id),
+                "account_id": str(account_id),
+                "chat_id": chat_id,
+                "avito_user_id": candidate_avito_user_id or None,
+                "avito_item_id": avito_item_id or None,
+                "name": candidate_name,
+                "department_id": account_department_id,
+            },
+        )
+        row = cand_result.fetchone()
+        candidate_id = row[0] if row else None
+
+        if candidate_id:
+            await session.execute(
+                text("""
+                    INSERT INTO chat_metadata (org_id, candidate_id, chat_id, unread_count)
+                    VALUES (CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1)
+                    ON CONFLICT (chat_id) DO UPDATE SET
+                        unread_count = chat_metadata.unread_count + 1,
+                        updated_at = now()
+                """),
+                {"org_id": str(org_id), "candidate_id": str(candidate_id), "chat_id": chat_id},
+            )
+
+        await session.commit()
+
+    if candidate_id:
+        # Инвалидация кеша кандидатов
+        async for key in redis.scan_iter(match=f"candidates:{org_id}:*", count=100):
+            await redis.delete(key)
+        await redis.delete(f"org:{org_id}:filters")
+
+        # WebSocket broadcast
+        from app.routers.ws import ws_manager
+
+        await ws_manager.broadcast_org(
+            org_id,
+            {"type": "new_candidate", "candidate_id": str(candidate_id)},
+        )
+
+        # Авто-ответ
+        if avito_item_id and candidate_avito_user_id:
+            try:
+                await _check_and_send_auto_response(
+                    ctx, org_id, account_id, chat_id,
+                    candidate_avito_user_id, avito_item_id,
+                )
+            except Exception:
+                logger.warning(
+                    "_handle_system_message: auto_response failed chat_id=%s", chat_id,
+                    exc_info=True,
+                )
+
+        logger.info(
+            "_handle_system_message: response created candidate_id=%s chat_id=%s",
+            candidate_id, chat_id,
+        )
+
+
+async def _fetch_chat_info(ctx: dict, account_id, account_avito_user_id: int, chat_id: str) -> dict | None:
+    """Получить данные чата через Avito API (кешируется в Redis)."""
+    redis = ctx["redis"]
+    import orjson
+
+    cache_key = f"chat_info:{chat_id}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return orjson.loads(cached)
+
+    session_factory = ctx["session_factory"]
+    avito_client = _get_avito_client(ctx)
+
+    async with session_factory() as session:
+        from sqlalchemy import text, select
+        from app.models.avito import AvitoAccount
+
+        await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+        result = await session.execute(
+            select(AvitoAccount).where(AvitoAccount.id == account_id)
+        )
+        account = result.scalar_one_or_none()
+
+    if account is None:
+        return None
+
+    data = await avito_client.get_user_info(account, account_avito_user_id, chat_id)
+    if data:
+        await redis.setex(cache_key, 300, orjson.dumps(data))
+    return data
+
+
+async def _enrich_candidate_from_api(
+    ctx: dict,
+    session_factory,
+    org_id,
+    account_id,
+    candidate_id,
+    chat_id: str,
+    account_avito_user_id: int | None,
+) -> None:
+    """
+    Обогатить нового кандидата данными из Avito API.
+    Вызывается один раз при создании кандидата через messages webhook.
+    """
+    if not account_avito_user_id:
+        return
+
+    chat_data = await _fetch_chat_info(ctx, account_id, account_avito_user_id, chat_id)
+    if not chat_data:
+        return
+
+    # Извлечь имя кандидата (не наш аккаунт)
+    candidate_name: str | None = None
+    candidate_avito_user_id: int | None = None
+    for u in chat_data.get("users", []):
+        uid = u.get("id")
+        if uid and uid != account_avito_user_id:
+            candidate_name = u.get("name")
+            candidate_avito_user_id = uid
+            break
+
+    # item_id из context
+    context = chat_data.get("context", {})
+    avito_item_id: int | None = context.get("value", {}).get("id") or None
+
+    if not candidate_name and not candidate_avito_user_id and not avito_item_id:
+        return
+
+    async with session_factory() as session:
+        from sqlalchemy import text
+
+        await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+        await session.execute(
+            text("""
+                UPDATE candidates
+                SET name           = COALESCE(:name, name),
+                    avito_user_id  = COALESCE(:avito_user_id, avito_user_id),
+                    avito_item_id  = COALESCE(:avito_item_id, avito_item_id),
+                    updated_at     = now()
+                WHERE id = CAST(:candidate_id AS UUID)
+            """),
+            {
+                "name": candidate_name,
+                "avito_user_id": candidate_avito_user_id,
+                "avito_item_id": avito_item_id,
+                "candidate_id": str(candidate_id),
+            },
+        )
+        await session.commit()
+
+    logger.info(
+        "_enrich_candidate: candidate_id=%s name=%s item_id=%s",
+        candidate_id, candidate_name, avito_item_id,
+    )
+
+
+def _get_avito_client(ctx: dict):
+    """Получить или создать AvitoAPIClient."""
+    avito_client = ctx.get("avito_client")
+    if avito_client is None:
+        from app.config import get_settings
+        from app.services.avito_client import AvitoAPIClient
+
+        settings = get_settings()
+        redis = ctx["redis"]
+        avito_client = AvitoAPIClient(
+            redis=redis,
+            encryption_key=settings.encryption_key_bytes,
+        )
+        if avito_client.session is None:
+            import aiohttp
+            avito_client.session = aiohttp.ClientSession()
+        ctx["avito_client"] = avito_client
+
+    return avito_client
+
 
 async def _check_and_send_auto_response(
     ctx: dict,
@@ -517,7 +870,6 @@ async def _check_and_send_auto_response(
         row = result.fetchone()
 
     if row:
-        # Enqueue авто-ответ
         try:
             from arq.connections import ArqRedis
             from app.redis import get_arq_pool

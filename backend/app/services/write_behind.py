@@ -67,6 +67,12 @@ async def _flush_chat_metadata(redis, session_factory) -> None:
 
                     last_message = u.get("last_message") or None
                     last_message_at_raw = u.get("last_message_at") or None
+                    if last_message_at_raw:
+                        try:
+                            from datetime import datetime as _dt
+                            last_message_at_raw = _dt.fromisoformat(last_message_at_raw)
+                        except (ValueError, TypeError):
+                            last_message_at_raw = None
 
                     stmt = text("""
                         UPDATE chat_metadata
