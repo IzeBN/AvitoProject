@@ -191,12 +191,6 @@ export default function MessengerPage() {
     staleTime: 120_000,
   })
 
-  const { data: stages = [] } = useQuery({ queryKey: ['stages'], queryFn: () => settingsApi.getStages(), staleTime: 5 * 60_000 })
-  const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: () => settingsApi.getTags(), staleTime: 5 * 60_000 })
-  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: () => settingsApi.getDepartments(), staleTime: 5 * 60_000 })
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.getList(), staleTime: 60_000 })
-  const responsibles = users.map(u => ({ id: u.id, name: u.full_name }))
-
   // Derive selected chat from URL param
   const selectedChat: ChatListItem | null = urlCandidateId
     ? (chats.find(c => c.candidate_id === urlCandidateId) ?? null)
