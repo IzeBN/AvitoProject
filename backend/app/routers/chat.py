@@ -196,6 +196,20 @@ async def chat_list(
             }
         )
 
+    # Пересортировать по last_message_at после merge с Redis (updated_at как fallback)
+    from datetime import datetime as _dt, timezone as _tz
+    _epoch = _dt(1970, 1, 1, tzinfo=_tz.utc)
+
+    def _sort_key(item: dict):
+        val = item.get("last_message_at")
+        if val is None:
+            return _epoch
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=_tz.utc)
+        return val
+
+    items.sort(key=_sort_key, reverse=True)
+
     import math
     from app.schemas.chat import ChatListItem
 
@@ -794,7 +808,7 @@ async def legacy_mark_read(
 
 
 @router.get(
-    "/filters",
+    "/chat/filters",
     response_model=FilterOptionsResponse,
     summary="Значения для фильтров",
     description="Кешируется 5 минут. Возвращает этапы, теги, отделы, ответственных и аккаунты.",
