@@ -40,11 +40,14 @@ async def handle_new_response(
         _org_id = uuid.UUID(org_id)
         _account_id = uuid.UUID(avito_account_id)
 
-        chat_id: str = payload.get("chat_id", "")
-        avito_user_id: int = payload.get("user_id", 0)
-        avito_item_id: int = payload.get("item_id", 0)
-        candidate_name: str = payload.get("name", "") or ""
-        phone_raw: str | None = payload.get("phone")
+        # Avito присылает вложенную структуру: {payload: {type: "...", value: {...}}}
+        value = payload.get("payload", {}).get("value", payload)
+
+        chat_id: str = value.get("chat_id", "") or payload.get("chat_id", "")
+        avito_user_id: int = value.get("user_id", 0) or payload.get("user_id", 0)
+        avito_item_id: int = value.get("item_id", 0) or payload.get("item_id", 0)
+        candidate_name: str = value.get("name", "") or payload.get("name", "") or ""
+        phone_raw: str | None = value.get("phone") or payload.get("phone")
 
         async with session_factory() as session:
             from sqlalchemy import text
@@ -206,11 +209,14 @@ async def handle_new_message(
     try:
         _org_id = uuid.UUID(org_id)
 
-        chat_id: str = payload.get("chat_id", "")
-        message_text: str = payload.get("text", "") or ""
-        message_type: str = payload.get("type", "text")
-        avito_message_id: str = str(payload.get("id", ""))
-        created_at_ts = payload.get("created", "")
+        # Avito присылает вложенную структуру: {payload: {type: "message", value: {...}}}
+        value = payload.get("payload", {}).get("value", payload)
+
+        chat_id: str = value.get("chat_id", "") or payload.get("chat_id", "")
+        message_text: str = value.get("content", {}).get("text", "") or value.get("text", "") or ""
+        message_type: str = value.get("type", "text")
+        avito_message_id: str = str(value.get("id", "") or payload.get("id", ""))
+        created_at_ts = value.get("created", "") or value.get("published_at", "")
 
         async with session_factory() as session:
             from sqlalchemy import text
