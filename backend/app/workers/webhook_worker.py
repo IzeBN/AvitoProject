@@ -85,7 +85,7 @@ async def handle_new_response(
                         'avito', true,
                         CAST(NULLIF(:department_id, '') AS UUID)
                     )
-                    ON CONFLICT (org_id, chat_id)
+                    ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL
                     DO UPDATE SET
                         avito_user_id    = EXCLUDED.avito_user_id,
                         avito_item_id    = EXCLUDED.avito_item_id,
@@ -250,7 +250,7 @@ async def handle_new_message(
                             CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, 'avito',
                             true, CAST(NULLIF(:department_id, '') AS UUID)
                         )
-                        ON CONFLICT (org_id, chat_id) DO UPDATE SET
+                        ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL DO UPDATE SET
                             has_new_message = true,
                             updated_at = now()
                         RETURNING id
