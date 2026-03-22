@@ -66,7 +66,7 @@ async def handle_new_response(
 
             # Получаем department_id аккаунта для автоназначения
             dept_result = await session.execute(
-                text("SELECT department_id FROM avito_accounts WHERE id = :account_id::uuid"),
+                text("SELECT department_id FROM avito_accounts WHERE id = CAST(:account_id AS UUID)"),
                 {"account_id": str(_account_id)},
             )
             dept_row = dept_result.fetchone()
@@ -80,10 +80,10 @@ async def handle_new_response(
                         name, phone_enc, phone_search_hash, source, has_new_message,
                         department_id
                     ) VALUES (
-                        :org_id::uuid, :account_id::uuid, :chat_id, :avito_user_id,
+                        CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, :avito_user_id,
                         :avito_item_id, :name, :phone_enc, :phone_search_hash,
                         'avito', true,
-                        NULLIF(:department_id, '')::uuid
+                        CAST(NULLIF(:department_id, '') AS UUID)
                     )
                     ON CONFLICT (org_id, chat_id)
                     DO UPDATE SET
@@ -118,7 +118,7 @@ async def handle_new_response(
                         INSERT INTO chat_metadata (
                             org_id, candidate_id, chat_id, unread_count
                         ) VALUES (
-                            :org_id::uuid, :candidate_id::uuid, :chat_id, 1
+                            CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1
                         )
                         ON CONFLICT (chat_id) DO UPDATE SET
                             unread_count = chat_metadata.unread_count + 1,
@@ -221,7 +221,7 @@ async def handle_new_message(
             cand_result = await session.execute(
                 text("""
                     SELECT id FROM candidates
-                    WHERE org_id = :org_id::uuid AND chat_id = :chat_id
+                    WHERE org_id = CAST(:org_id AS UUID) AND chat_id = :chat_id
                     LIMIT 1
                 """),
                 {"org_id": str(_org_id), "chat_id": chat_id},
@@ -234,7 +234,7 @@ async def handle_new_message(
             if candidate_id is None and chat_id:
                 # Получаем department_id аккаунта
                 dept_result = await session.execute(
-                    text("SELECT department_id FROM avito_accounts WHERE id = :account_id::uuid"),
+                    text("SELECT department_id FROM avito_accounts WHERE id = CAST(:account_id AS UUID)"),
                     {"account_id": str(_account_id)},
                 )
                 dept_row = dept_result.fetchone()
@@ -247,8 +247,8 @@ async def handle_new_message(
                             org_id, avito_account_id, chat_id, source,
                             has_new_message, department_id
                         ) VALUES (
-                            :org_id::uuid, :account_id::uuid, :chat_id, 'avito',
-                            true, NULLIF(:department_id, '')::uuid
+                            CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, 'avito',
+                            true, CAST(NULLIF(:department_id, '') AS UUID)
                         )
                         ON CONFLICT (org_id, chat_id) DO UPDATE SET
                             has_new_message = true,
@@ -270,7 +270,7 @@ async def handle_new_message(
                     await session.execute(
                         text("""
                             INSERT INTO chat_metadata (org_id, candidate_id, chat_id, unread_count)
-                            VALUES (:org_id::uuid, :candidate_id::uuid, :chat_id, 1)
+                            VALUES (CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id, 1)
                             ON CONFLICT (chat_id) DO UPDATE SET
                                 unread_count = chat_metadata.unread_count + 1,
                                 updated_at = now()
@@ -286,9 +286,9 @@ async def handle_new_message(
                             org_id, candidate_id, chat_id, avito_message_id,
                             content, message_type, author_type, created_at
                         ) VALUES (
-                            :org_id::uuid, :candidate_id::uuid, :chat_id,
+                            CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id,
                             :avito_message_id, :content, :message_type, 'candidate',
-                            COALESCE(:created_at::timestamptz, now())
+                            COALESCE(CAST(:created_at AS TIMESTAMPTZ), now())
                         )
                         ON CONFLICT (avito_message_id)
                         WHERE avito_message_id IS NOT NULL
@@ -432,7 +432,7 @@ async def handle_chat_blocked(
                 text("""
                     UPDATE chat_metadata
                     SET is_blocked = true, updated_at = now()
-                    WHERE org_id = :org_id::uuid AND chat_id = :chat_id
+                    WHERE org_id = CAST(:org_id AS UUID) AND chat_id = :chat_id
                 """),
                 {"org_id": str(_org_id), "chat_id": chat_id},
             )
@@ -481,8 +481,8 @@ async def _check_and_send_auto_response(
         result = await session.execute(
             text("""
                 SELECT id FROM auto_response_rules
-                WHERE org_id = :org_id::uuid
-                  AND avito_account_id = :account_id::uuid
+                WHERE org_id = CAST(:org_id AS UUID)
+                  AND avito_account_id = CAST(:account_id AS UUID)
                   AND is_active = true
                   AND (avito_item_id = :item_id OR avito_item_id IS NULL)
                 ORDER BY avito_item_id NULLS LAST
