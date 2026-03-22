@@ -45,7 +45,8 @@
       "Bash(python3 -c \"import sys,json; [print\\(x.get\\(''''Name'''',''''''''\\)\\) for x in json.load\\(sys.stdin\\) if ''''backend'''' in x.get\\(''''Name'''',''''''''\\).lower\\(\\)]\")",
       "Bash(echo \"EXIT: $?\")",
       "Read(//c/Data/projects/**)",
-      "Bash(git -C \"C:/Data/projects/AvitoProject\" status --short)"
+      "Bash(git -C \"C:/Data/projects/AvitoProject\" status --short)",
+      "Bash(del:*)"
     ]
   }
 }
