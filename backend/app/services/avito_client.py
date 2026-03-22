@@ -265,6 +265,14 @@ class AvitoAPIClient:
     # Billing
     # ------------------------------------------------------------------
 
+    async def get_application(self, account: "AvitoAccount", apply_id: str) -> dict:
+        """Получить данные отклика по applyId (job/v2/applications/{apply_id})."""
+        return await self._request(
+            "GET",
+            f"/job/v2/applications/{apply_id}",
+            account,
+        )
+
     async def get_balance(self, account: "AvitoAccount") -> dict:
         """Получить баланс аккаунта."""
         return await self._request(

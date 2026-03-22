@@ -108,6 +108,60 @@ async def handle_new_response(
         candidate_name: str = value.get("name", "") or payload.get("name", "") or ""
         phone_raw: str | None = value.get("phone") or payload.get("phone")
 
+        # --- Обогащение через Avito API по applyId ---
+        apply_id: str | None = str(payload.get("applyId") or payload.get("apply_id") or "").strip() or None
+        vacancy_title: str | None = None
+        vacancy_location: str | None = None
+
+        avito_client = ctx.get("avito_client")
+        if apply_id and avito_client:
+            try:
+                async with session_factory() as _sess:
+                    from sqlalchemy import text as _text
+                    _acc_row = (await _sess.execute(
+                        _text("SELECT client_id_enc, client_secret_enc, avito_user_id FROM avito_accounts WHERE id = CAST(:id AS UUID)"),
+                        {"id": str(_account_id)},
+                    )).fetchone()
+
+                if _acc_row:
+                    from app.models.avito import AvitoAccount as _AvitoAccount
+                    _fake_account = _AvitoAccount.__new__(_AvitoAccount)
+                    _fake_account.id = _account_id
+                    _fake_account.org_id = _org_id
+                    _fake_account.client_id_enc = _acc_row[0]
+                    _fake_account.client_secret_enc = _acc_row[1]
+                    _fake_account.avito_user_id = _acc_row[2]
+
+                    app_data = await avito_client.get_application(_fake_account, apply_id)
+
+                    applicant = app_data.get("applicant") or {}
+                    contacts = app_data.get("contacts") or {}
+                    vacancy_data = app_data.get("vacancy") or {}
+
+                    # Имя кандидата (API надёжнее payload)
+                    api_name = (applicant.get("data") or {}).get("name") or ""
+                    if api_name:
+                        candidate_name = api_name
+
+                    # Телефон (берём из API, если не пришёл в payload)
+                    phones = contacts.get("phones") or []
+                    if phones and not phone_raw:
+                        phone_raw = (phones[0] or {}).get("value")
+
+                    # chat_id из contacts если не пришёл в payload
+                    api_chat_id = (contacts.get("chat") or {}).get("value") or ""
+                    if api_chat_id and not chat_id:
+                        chat_id = api_chat_id
+
+                    # Вакансия
+                    vacancy_title = vacancy_data.get("title") or None
+                    vacancy_location = (vacancy_data.get("addressDetails") or {}).get("city") or None
+                    api_item_id = vacancy_data.get("id")
+                    if api_item_id and not avito_item_id:
+                        avito_item_id = int(api_item_id)
+            except Exception:
+                logger.warning("handle_new_response: failed to enrich via Avito API apply_id=%s", apply_id)
+
         async with session_factory() as session:
             from sqlalchemy import text
 
@@ -148,23 +202,26 @@ async def handle_new_response(
                     INSERT INTO candidates (
                         org_id, avito_account_id, chat_id, avito_user_id, avito_item_id,
                         name, phone_enc, phone_search_hash, source, has_new_message,
-                        department_id, stage_id
+                        department_id, stage_id, vacancy, location
                     ) VALUES (
                         CAST(:org_id AS UUID), CAST(:account_id AS UUID), :chat_id, :avito_user_id,
                         :avito_item_id, :name, :phone_enc, :phone_search_hash,
                         'avito', true,
                         CAST(NULLIF(:department_id, '') AS UUID),
-                        CAST(NULLIF(:stage_id, '') AS UUID)
+                        CAST(NULLIF(:stage_id, '') AS UUID),
+                        :vacancy, :location
                     )
                     ON CONFLICT (org_id, chat_id) WHERE deleted_at IS NULL AND chat_id IS NOT NULL
                     DO UPDATE SET
-                        avito_user_id    = EXCLUDED.avito_user_id,
-                        avito_item_id    = EXCLUDED.avito_item_id,
-                        name             = COALESCE(EXCLUDED.name, candidates.name),
-                        phone_enc        = COALESCE(EXCLUDED.phone_enc, candidates.phone_enc),
+                        avito_user_id     = EXCLUDED.avito_user_id,
+                        avito_item_id     = EXCLUDED.avito_item_id,
+                        name              = COALESCE(EXCLUDED.name, candidates.name),
+                        phone_enc         = COALESCE(EXCLUDED.phone_enc, candidates.phone_enc),
                         phone_search_hash = COALESCE(EXCLUDED.phone_search_hash, candidates.phone_search_hash),
-                        has_new_message  = true,
-                        updated_at       = now()
+                        vacancy           = COALESCE(EXCLUDED.vacancy, candidates.vacancy),
+                        location          = COALESCE(EXCLUDED.location, candidates.location),
+                        has_new_message   = true,
+                        updated_at        = now()
                     RETURNING id
                 """),
                 {
@@ -178,6 +235,8 @@ async def handle_new_response(
                     "phone_search_hash": phone_search_hash,
                     "department_id": account_department_id,
                     "stage_id": default_stage_id,
+                    "vacancy": vacancy_title,
+                    "location": vacancy_location,
                 },
             )
             row = candidate_result.fetchone()
@@ -204,6 +263,40 @@ async def handle_new_response(
                 )
 
             await session.commit()
+
+        # Upsert вакансии в таблицу vacancies
+        if avito_item_id and vacancy_title:
+            try:
+                async with session_factory() as v_session:
+                    await v_session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                    await v_session.execute(
+                        text("""
+                            INSERT INTO vacancies (org_id, avito_account_id, avito_item_id, title, location, status, synced_at)
+                            VALUES (
+                                CAST(:org_id AS UUID),
+                                CAST(:account_id AS UUID),
+                                :avito_item_id,
+                                :title,
+                                :location,
+                                'active',
+                                now()
+                            )
+                            ON CONFLICT (org_id, avito_item_id) DO UPDATE SET
+                                title      = EXCLUDED.title,
+                                location   = COALESCE(EXCLUDED.location, vacancies.location),
+                                synced_at  = now()
+                        """),
+                        {
+                            "org_id": str(_org_id),
+                            "account_id": str(_account_id),
+                            "avito_item_id": avito_item_id,
+                            "title": vacancy_title,
+                            "location": vacancy_location,
+                        },
+                    )
+                    await v_session.commit()
+            except Exception:
+                logger.warning("handle_new_response: failed to upsert vacancy item_id=%s", avito_item_id)
 
         # Применить авто-тег к новому кандидату
         if candidate_id:

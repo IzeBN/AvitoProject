@@ -35,6 +35,19 @@ async def startup(ctx: dict) -> None:
     )
     ctx["redis"] = Redis(connection_pool=pool)
 
+    # AvitoAPIClient для обращений к Avito API из воркера
+    import aiohttp
+    from app.services.avito_client import AvitoAPIClient
+
+    aiohttp_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+    avito_redis = Redis(connection_pool=ConnectionPool.from_url(
+        settings.REDIS_URL, max_connections=3, decode_responses=False,
+    ))
+    avito_client = AvitoAPIClient(redis=avito_redis, encryption_key=settings.encryption_key_bytes)
+    avito_client.session = aiohttp_session
+    ctx["avito_client"] = avito_client
+    ctx["aiohttp_session"] = aiohttp_session
+
     logger.info("WriteBehind worker started")
 
 
@@ -43,6 +56,9 @@ async def shutdown(ctx: dict) -> None:
     redis = ctx.get("redis")
     if redis:
         await redis.aclose()
+    session = ctx.get("aiohttp_session")
+    if session:
+        await session.close()
     logger.info("WriteBehind worker stopped")
 
 
