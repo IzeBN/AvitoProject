@@ -55,7 +55,8 @@
       "Bash(find /c/Data/projects/AvitoProject/desktop/src -name router* -o -name routes* -o -name App.tsx)",
       "Bash(find /c/Data/projects/AvitoProject/desktop/src -name CandidateModal* -o -name CandidateCard* -o -name CandidateDrawer*)",
       "Bash(find /c/Data/projects/AvitoProject/desktop/src -name MessageItem*)",
-      "Bash(find C:DataprojectsAvitoProjectdesktopsrc -name *candidate* -o -name *table*)"
+      "Bash(find C:DataprojectsAvitoProjectdesktopsrc -name *candidate* -o -name *table*)",
+      "Bash(grep:*)"
     ]
   }
 }
