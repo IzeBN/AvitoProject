@@ -24,6 +24,8 @@ jobs:
             cd ./responscrm
 
             echo "→ Pull latest code"
+            git fetch origin
+            git checkout origin/master -- .env
             git stash
             git pull origin master
 
