@@ -271,6 +271,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.avito_client = avito_client
     logger.info("AvitoAPIClient initialized")
 
+    # Инициализируем ARQ pool для постановки задач в очередь
+    from arq import create_pool as arq_create_pool
+    from app.workers.settings import get_redis_settings
+
+    app.state.arq_redis = await arq_create_pool(get_redis_settings())
+    logger.info("ARQ pool initialized")
+
     logger.info("%s started successfully", settings.APP_NAME)
 
     yield
@@ -286,6 +293,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await close_db()
     await close_redis()
+
+    if hasattr(app.state, "arq_redis"):
+        await app.state.arq_redis.aclose()
 
     logger.info("Shutdown complete")
 

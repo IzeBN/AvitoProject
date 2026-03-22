@@ -88,9 +88,7 @@ async def avito_messages_webhook(
             logger.debug("messages webhook: duplicate event_uid=%s skipped", event_uid)
             return {"ok": True}
 
-        from arq.connections import ArqRedis
-        from app.redis import get_arq_pool
-        arq_redis = ArqRedis(pool_or_conn=get_arq_pool())
+        arq_redis = request.app.state.arq_redis
         await arq_redis.enqueue_job(
             "handle_new_message",
             account_data["org_id"],
@@ -131,9 +129,7 @@ async def avito_responses_webhook(
             logger.debug("responses webhook: duplicate apply_id=%s skipped", apply_id)
             return {"ok": True}
 
-        from arq.connections import ArqRedis
-        from app.redis import get_arq_pool
-        arq_redis = ArqRedis(pool_or_conn=get_arq_pool())
+        arq_redis = request.app.state.arq_redis
         await arq_redis.enqueue_job(
             "handle_new_response",
             account_data["org_id"],
