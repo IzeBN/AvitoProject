@@ -82,7 +82,6 @@ class ChatMessage(Base):
         Index(
             "idx_chat_msgs_avito_id",
             "avito_message_id",
-            unique=True,
             postgresql_where="avito_message_id IS NOT NULL",
         ),
     )
