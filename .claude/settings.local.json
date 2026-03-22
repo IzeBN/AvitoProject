@@ -50,7 +50,8 @@
       "Bash(grep -r chat_messages /c/Data/projects/AvitoProject/backend/alembic/versions/ --include=*.py -l)",
       "Bash(python -c \":*)",
       "Bash(npx tsc:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(grep -n \"FastAnswer\\\\|fast_answer\" /c/Data/projects/AvitoProject/backend/app/models/*.py)"
     ]
   }
 }

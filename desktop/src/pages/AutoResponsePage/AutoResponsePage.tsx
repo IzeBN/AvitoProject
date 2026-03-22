@@ -22,6 +22,7 @@ type Tab = 'rules' | 'default' | 'items' | 'fast'
 
 const AUTO_TYPE_LABELS: Record<string, string> = {
   on_message: 'На сообщение',
+  on_first_message: 'На первое сообщение',
   on_response: 'На отклик',
 }
 
@@ -128,7 +129,7 @@ function FastAnswersTab() {
   })
 
   const reorderMutation = useMutation({
-    mutationFn: (ids: string[]) => autoResponseApi.reorderFastAnswers(ids),
+    mutationFn: (items: Array<{ id: string; sort_order: number }>) => autoResponseApi.reorderFastAnswers(items),
     onError: () => {
       void qc.invalidateQueries({ queryKey: ['auto-response', 'fast-answers'] })
       showToast('error', 'Не удалось сохранить порядок')
@@ -157,9 +158,9 @@ function FastAnswersTab() {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    const ids = orderedRef.current.map(a => a.id)
+    const items = orderedRef.current.map((a, i) => ({ id: a.id, sort_order: i }))
     qc.setQueryData<FastAnswer[]>(['auto-response', 'fast-answers'], orderedRef.current)
-    reorderMutation.mutate(ids)
+    reorderMutation.mutate(items)
     setDraggedId(null)
     orderedRef.current = []
   }
@@ -209,11 +210,11 @@ function FastAnswersTab() {
                 style={{ flex: 1, fontSize: 13, cursor: 'pointer' }}
                 onDoubleClick={() => {
                   setEditingItem(a)
-                  setEditText(a.message)
+                  setEditText(a.text)
                 }}
                 title="Двойной клик для редактирования"
               >
-                {a.message}
+                {a.text}
               </span>
               <Button
                 variant="ghost"
@@ -372,7 +373,7 @@ function RulesTab() {
   const [editingRule, setEditingRule] = useState<AutoResponseRule | null>(null)
   const [newAccountId, setNewAccountId] = useState('')
   const [newItemIds, setNewItemIds] = useState('')   // comma-separated
-  const [newAutoType, setNewAutoType] = useState('on_message')
+  const [newAutoType, setNewAutoType] = useState('on_first_message')
   const [newMessage, setNewMessage] = useState('')
   const [editItemIds, setEditItemIds] = useState('')
   const [editMessage, setEditMessage] = useState('')
@@ -584,7 +585,7 @@ function RulesTab() {
               onChange={e => setNewAutoType(e.target.value)}
               style={{ ...selectStyle, width: '100%' }}
             >
-              <option value="on_message">На входящее сообщение</option>
+              <option value="on_first_message">На первое сообщение (новый кандидат)</option>
               <option value="on_response">На отклик</option>
             </select>
           </div>

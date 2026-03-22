@@ -6,7 +6,7 @@ export interface AutoResponseRule {
   avito_account_name: string | null
   avito_item_ids: number[] | null
   message: string | null
-  auto_type: 'on_message' | 'on_response' | null
+  auto_type: 'on_message' | 'on_first_message' | 'on_response' | null
   is_active: boolean
 }
 
@@ -24,8 +24,9 @@ export interface ItemMessage {
 
 export interface FastAnswer {
   id: string
-  message: string
-  order: number
+  title: string
+  text: string
+  sort_order: number
 }
 
 export const autoResponseApi = {
@@ -64,19 +65,19 @@ export const autoResponseApi = {
 
   // Fast answers
   getFastAnswers: () =>
-    apiClient.get<FastAnswer[]>('/messaging/fast-answers').then(r => r.data),
+    apiClient.get<FastAnswer[]>('/chat/fast-answers').then(r => r.data),
 
-  createFastAnswer: (message: string) =>
-    apiClient.post<FastAnswer>('/messaging/fast-answers', { message }).then(r => r.data),
+  createFastAnswer: (text: string) =>
+    apiClient.post<FastAnswer>('/chat/fast-answers', { title: text.slice(0, 200), text }).then(r => r.data),
 
-  updateFastAnswer: (id: string, message: string) =>
+  updateFastAnswer: (id: string, text: string) =>
     apiClient
-      .patch<FastAnswer>(`/messaging/fast-answers/${id}`, { message })
+      .patch<FastAnswer>(`/chat/fast-answers/${id}`, { title: text.slice(0, 200), text })
       .then(r => r.data),
 
   deleteFastAnswer: (id: string) =>
-    apiClient.delete(`/messaging/fast-answers/${id}`).then(r => r.data),
+    apiClient.delete(`/chat/fast-answers/${id}`).then(r => r.data),
 
-  reorderFastAnswers: (ids: string[]) =>
-    apiClient.put('/messaging/fast-answers/reorder', { ids }).then(r => r.data),
+  reorderFastAnswers: (items: Array<{ id: string; sort_order: number }>) =>
+    apiClient.post('/chat/fast-answers/reorder', { items }).then(r => r.data),
 }
