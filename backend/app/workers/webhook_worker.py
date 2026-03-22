@@ -216,7 +216,19 @@ async def handle_new_message(
         message_text: str = value.get("content", {}).get("text", "") or value.get("text", "") or ""
         message_type: str = value.get("type", "text")
         avito_message_id: str = str(value.get("id", "") or payload.get("id", ""))
-        created_at_ts = value.get("created", "") or value.get("published_at", "")
+
+        # created — Unix timestamp (int) или ISO строка
+        from datetime import datetime, timezone
+        _created_raw = value.get("created") or value.get("published_at")
+        if isinstance(_created_raw, int):
+            created_at_ts = datetime.fromtimestamp(_created_raw, tz=timezone.utc)
+        elif isinstance(_created_raw, str) and _created_raw:
+            try:
+                created_at_ts = datetime.fromisoformat(_created_raw.replace("Z", "+00:00"))
+            except ValueError:
+                created_at_ts = None
+        else:
+            created_at_ts = None
 
         async with session_factory() as session:
             from sqlalchemy import text
