@@ -49,6 +49,8 @@ function saveVisibleCols(cols: Set<ColumnKey>) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+const ROW_HEIGHT = 52
+
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
