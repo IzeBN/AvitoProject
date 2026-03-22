@@ -310,7 +310,7 @@ async def handle_new_message(
                             COALESCE(CAST(:created_at AS TIMESTAMPTZ), now())
                         WHERE NOT EXISTS (
                             SELECT 1 FROM chat_messages
-                            WHERE avito_message_id = :avito_message_id
+                            WHERE avito_message_id = CAST(:avito_message_id AS VARCHAR)
                               AND avito_message_id IS NOT NULL
                         )
                     """),
