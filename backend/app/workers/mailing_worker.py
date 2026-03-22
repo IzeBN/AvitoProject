@@ -36,7 +36,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
         await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
 
         result = await session.execute(
-            text("SELECT id, org_id, message, file_url, rate_limit_ms FROM mailing_jobs WHERE id = :id::uuid"),
+            text("SELECT id, org_id, message, file_url, rate_limit_ms FROM mailing_jobs WHERE id = CAST(:id AS UUID)"),
             {"id": job_id},
         )
         row = result.fetchone()
@@ -53,7 +53,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
             text("""
                 UPDATE mailing_jobs
                 SET status = 'running', started_at = now(), updated_at = now()
-                WHERE id = :id::uuid AND status IN ('pending', 'resuming')
+                WHERE id = CAST(:id AS UUID) AND status IN ('pending', 'resuming')
             """),
             {"id": job_id},
         )
@@ -78,7 +78,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                 from sqlalchemy import text
                 await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
                 await session.execute(
-                    text("UPDATE mailing_jobs SET status = 'paused', updated_at = now() WHERE id = :id::uuid"),
+                    text("UPDATE mailing_jobs SET status = 'paused', updated_at = now() WHERE id = CAST(:id AS UUID)"),
                     {"id": job_id},
                 )
                 await session.commit()
@@ -93,12 +93,12 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                     text("""
                         UPDATE mailing_recipients
                         SET status = 'skipped'
-                        WHERE mailing_job_id = :id::uuid AND status = 'pending'
+                        WHERE mailing_job_id = CAST(:id AS UUID) AND status = 'pending'
                     """),
                     {"id": job_id},
                 )
                 await session.execute(
-                    text("UPDATE mailing_jobs SET status = 'cancelled', finished_at = now(), updated_at = now() WHERE id = :id::uuid"),
+                    text("UPDATE mailing_jobs SET status = 'cancelled', finished_at = now(), updated_at = now() WHERE id = CAST(:id AS UUID)"),
                     {"id": job_id},
                 )
                 await session.commit()
@@ -117,7 +117,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                                c.avito_account_id, c.chat_id, c.avito_user_id
                         FROM mailing_recipients mr
                         JOIN candidates c ON c.id = mr.candidate_id
-                        WHERE mr.mailing_job_id = :job_id::uuid AND mr.status = 'pending'
+                        WHERE mr.mailing_job_id = CAST(:job_id AS UUID) AND mr.status = 'pending'
                         ORDER BY mr.id
                         LIMIT :limit
                     """),
@@ -130,9 +130,9 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                                c.avito_account_id, c.chat_id, c.avito_user_id
                         FROM mailing_recipients mr
                         JOIN candidates c ON c.id = mr.candidate_id
-                        WHERE mr.mailing_job_id = :job_id::uuid
+                        WHERE mr.mailing_job_id = CAST(:job_id AS UUID)
                           AND mr.status = 'pending'
-                          AND mr.id > :last_id::uuid
+                          AND mr.id > CAST(:last_id AS UUID)
                         ORDER BY mr.id
                         LIMIT :limit
                     """),
@@ -250,7 +250,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
             text("""
                 UPDATE mailing_jobs
                 SET status = 'done', finished_at = now(), sent = :sent, failed = :failed, updated_at = now()
-                WHERE id = :id::uuid
+                WHERE id = CAST(:id AS UUID)
             """),
             {"id": job_id, "sent": sent, "failed": failed},
         )
@@ -378,7 +378,7 @@ async def _update_recipient(
                         last_attempt_at = now(),
                         sent_at = :sent_at,
                         error_message = :error_message
-                    WHERE id = :id::uuid
+                    WHERE id = CAST(:id AS UUID)
                 """),
                 {
                     "id": str(recipient_id),
@@ -399,7 +399,7 @@ async def _count_total(session_factory, job_id: str) -> int:
             from sqlalchemy import text
             await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
             result = await session.execute(
-                text("SELECT total FROM mailing_jobs WHERE id = :id::uuid"),
+                text("SELECT total FROM mailing_jobs WHERE id = CAST(:id AS UUID)"),
                 {"id": job_id},
             )
             row = result.fetchone()

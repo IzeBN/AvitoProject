@@ -72,7 +72,7 @@ async def _flush_chat_metadata(redis, session_factory) -> None:
                         UPDATE chat_metadata
                         SET last_message      = :last_message,
                             unread_count      = :unread_count,
-                            last_message_at   = :last_message_at::timestamptz,
+                            last_message_at   = CAST(:last_message_at AS TIMESTAMPTZ),
                             updated_at        = now()
                         WHERE chat_id = :chat_id
                     """)
@@ -143,7 +143,7 @@ async def _flush_candidate_flags(redis, session_factory) -> None:
                             UPDATE candidates
                             SET has_new_message = :has_new_message,
                                 updated_at      = now()
-                            WHERE id = :candidate_id::uuid
+                            WHERE id = CAST(:candidate_id AS UUID)
                         """),
                         {
                             "has_new_message": has_new_message,
