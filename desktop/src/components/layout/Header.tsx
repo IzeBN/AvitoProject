@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, CheckCheck, ClipboardList } from 'lucide-react'
+import { Bell, CheckCheck, ClipboardList, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { useNotificationsStore } from '@/stores/notifications.store'
 import { useNavigate } from 'react-router-dom'
@@ -17,10 +17,12 @@ export const Header = () => {
   const { notifications, unread, markAllRead } = useNotificationsStore()
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
 
   const roleLabel = user?.role ? (ROLE_LABELS[user.role] ?? user.role) : null
 
-  // Закрыть при клике вне панели
+  // Закрыть при клике вне панели уведомлений
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -29,6 +31,22 @@ export const Header = () => {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  // Закрыть при клике вне профильного дропдауна
+  useEffect(() => {
+    if (!profileOpen) return
+    const handler = (e: MouseEvent) => {
+      if (!profileRef.current?.contains(e.target as Node)) setProfileOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [profileOpen])
+
+  const handleLogout = () => {
+    setProfileOpen(false)
+    useAuthStore.getState().logout()
+    navigate('/login')
+  }
 
   const handleBellClick = () => {
     setOpen(prev => !prev)
@@ -116,8 +134,29 @@ export const Header = () => {
           )}
         </div>
 
-        <div className="header-avatar" title={user?.full_name}>
-          {user?.full_name?.charAt(0).toUpperCase() ?? '?'}
+        <div ref={profileRef} style={{ position: 'relative' }}>
+          <button
+            className="header-avatar"
+            title={user?.full_name}
+            onClick={() => setProfileOpen(prev => !prev)}
+            aria-label="Профиль"
+          >
+            {user?.full_name?.charAt(0).toUpperCase() ?? '?'}
+          </button>
+
+          {profileOpen && (
+            <div className="profile-dropdown">
+              <div className="profile-dropdown-info">
+                <div className="profile-dropdown-name">{user?.full_name ?? '—'}</div>
+                <div className="profile-dropdown-email">{user?.email ?? ''}</div>
+              </div>
+              <div className="profile-dropdown-divider" />
+              <button className="profile-dropdown-logout" onClick={handleLogout}>
+                <LogOut size={14} />
+                <span>Выйти</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -293,7 +332,56 @@ export const Header = () => {
           font-size: 13px;
           font-weight: 600;
           user-select: none;
+          cursor: pointer;
+          transition: opacity 0.15s;
         }
+        .header-avatar:hover { opacity: 0.85; }
+        .profile-dropdown {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          width: 220px;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          box-shadow: var(--shadow-md);
+          z-index: 200;
+          overflow: hidden;
+        }
+        .profile-dropdown-info {
+          padding: 14px 16px 12px;
+        }
+        .profile-dropdown-name {
+          font-size: 14px;
+          font-weight: 700;
+          color: var(--color-text);
+          margin-bottom: 3px;
+        }
+        .profile-dropdown-email {
+          font-size: 12px;
+          color: var(--color-text-secondary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .profile-dropdown-divider {
+          height: 1px;
+          background: var(--color-border);
+        }
+        .profile-dropdown-logout {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 10px 16px;
+          font-size: 13px;
+          color: var(--color-danger);
+          background: none;
+          text-align: left;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .profile-dropdown-logout:hover { background: var(--color-bg); }
       `}</style>
     </header>
   )

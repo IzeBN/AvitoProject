@@ -1,14 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatApi } from '@/api/chat'
 
+interface ChatListParams {
+  search?: string
+  has_unread?: boolean
+  avito_account_id?: string
+  stage_id?: string
+  responsible_id?: string
+}
+
 export const chatKeys = {
   all: ['chats'] as const,
-  list: (params?: { search?: string; has_unread?: boolean; avito_account_id?: string }) =>
-    ['chats', 'list', params] as const,
+  list: (params?: ChatListParams) => ['chats', 'list', params] as const,
   messages: (chatId: string) => ['chat', chatId, 'messages'] as const,
 }
 
-export function useChatList(params?: { search?: string; has_unread?: boolean; avito_account_id?: string }) {
+export function useChatList(params?: ChatListParams) {
   return useQuery({
     queryKey: chatKeys.list(params),
     queryFn: () => chatApi.getList(params),

@@ -76,7 +76,9 @@ export const FastAnswersPopover = ({
           position: absolute;
           bottom: calc(100% + 8px);
           left: 0;
-          right: 0;
+          min-width: 320px;
+          width: max-content;
+          max-width: min(480px, 90vw);
           background: var(--color-surface);
           border: 1px solid var(--color-border);
           border-radius: var(--radius-md);

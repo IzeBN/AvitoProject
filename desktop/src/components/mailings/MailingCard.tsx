@@ -83,9 +83,11 @@ export const MailingCard = ({
         </button>
       </div>
 
-      <div className="mcard-by">
-        Запустил: <strong>{job.created_by.full_name}</strong>
-      </div>
+      {job.created_by && (
+        <div className="mcard-by">
+          Запустил: <strong>{job.created_by.full_name}</strong>
+        </div>
+      )}
 
       <MailingProgress job={job} />
 

@@ -60,6 +60,19 @@ def _extract_message_content(value: dict) -> tuple[str, str]:
     return text, "file"
 
 
+def _last_message_preview(text: str, msg_type: str) -> str:
+    """Возвращает человекочитаемый превью для last_message в чат-листе."""
+    if msg_type == "image":
+        return "📷 Фото"
+    if msg_type == "voice":
+        return "🎙 Голосовое"
+    if msg_type == "file":
+        return "📎 Файл"
+    if msg_type == "link":
+        return text[:200] if text else "🔗 Ссылка"
+    return text[:200] if text else ""
+
+
 async def handle_new_response(
     ctx: dict,
     org_id: str,
@@ -472,7 +485,7 @@ async def handle_new_message(
         await cache.wb_update_chat_meta(
             chat_id,
             {
-                "last_message": message_text[:200],
+                "last_message": _last_message_preview(message_text, message_type),
                 "unread_count": "increment",
                 "last_message_at": created_at_ts,
             },

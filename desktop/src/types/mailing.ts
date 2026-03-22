@@ -20,5 +20,5 @@ export interface MailingJob {
   started_at: string | null
   finished_at: string | null
   created_at: string
-  created_by: { id: string; full_name: string }
+  created_by?: { id: string; full_name: string } | null
 }

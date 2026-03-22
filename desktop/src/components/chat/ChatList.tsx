@@ -15,8 +15,22 @@ interface ChatListProps {
   avitoAccountId: string
   onAvitoAccountChange: (v: string) => void
   accounts: Array<{ id: string; name: string }>
+  stageId: string
+  onStageChange: (v: string) => void
+  stages: Array<{ id: string; name: string; color: string | null }>
+  responsibleId: string
+  onResponsibleChange: (v: string) => void
+  responsibles: Array<{ id: string; full_name: string }>
   filtersOpen: boolean
   onToggleFilters: () => void
+}
+
+const formatLastMessage = (msg: string | null): string => {
+  if (!msg) return 'Нет сообщений'
+  if (msg.startsWith('http') && (msg.includes('avito.ru') || msg.includes('.jpg') || msg.includes('.png') || msg.includes('.jpeg') || msg.includes('.webp'))) {
+    return '📷 Фото'
+  }
+  return msg
 }
 
 const formatLastTime = (iso: string | null) => {
@@ -41,6 +55,12 @@ export const ChatList = ({
   avitoAccountId,
   onAvitoAccountChange,
   accounts,
+  stageId,
+  onStageChange,
+  stages,
+  responsibleId,
+  onResponsibleChange,
+  responsibles,
   filtersOpen,
   onToggleFilters,
 }: ChatListProps) => {
@@ -94,6 +114,32 @@ export const ChatList = ({
               ))}
             </select>
           )}
+          {stages.length > 0 && (
+            <select
+              className="clist-account-select"
+              value={stageId}
+              onChange={e => onStageChange(e.target.value)}
+              aria-label="Этап"
+            >
+              <option value="">Все этапы</option>
+              {stages.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+          {responsibles.length > 0 && (
+            <select
+              className="clist-account-select"
+              value={responsibleId}
+              onChange={e => onResponsibleChange(e.target.value)}
+              aria-label="Ответственный"
+            >
+              <option value="">Все ответственные</option>
+              {responsibles.map(r => (
+                <option key={r.id} value={r.id}>{r.full_name}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -134,7 +180,7 @@ export const ChatList = ({
                   </div>
                   <div className="clist-item-bottom">
                     <span className="clist-item-preview">
-                      {chat.last_message ?? 'Нет сообщений'}
+                      {formatLastMessage(chat.last_message)}
                     </span>
                     {chat.unread_count > 0 && (
                       <span className="clist-badge">{chat.unread_count}</span>

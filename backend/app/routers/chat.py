@@ -98,6 +98,8 @@ async def chat_list(
     search: str | None = Query(default=None, max_length=255),
     has_unread: bool | None = Query(default=None),
     avito_account_id: uuid.UUID | None = Query(default=None),
+    stage_id: uuid.UUID | None = Query(default=None),
+    responsible_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=1, le=200),
 ) -> ChatListResponse:
@@ -121,6 +123,12 @@ async def chat_list(
 
     if avito_account_id:
         conditions.append(Candidate.avito_account_id == avito_account_id)
+
+    if stage_id:
+        conditions.append(Candidate.stage_id == stage_id)
+
+    if responsible_id:
+        conditions.append(Candidate.responsible_id == responsible_id)
 
     count_stmt = (
         select(func.count(ChatMetadata.id))

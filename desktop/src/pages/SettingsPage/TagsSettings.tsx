@@ -91,7 +91,7 @@ export default function TagsSettings() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 800 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button
           icon={<Plus size={15} />}

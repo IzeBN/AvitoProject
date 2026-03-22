@@ -87,7 +87,7 @@ export default function DepartmentsSettings() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 800 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button icon={<Plus size={15} />} size="sm" onClick={() => setShowAddModal(true)}>
           Добавить отдел

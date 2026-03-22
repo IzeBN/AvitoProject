@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, MessageCircle, Clock, User, Building2, Tag, Calendar, FileText, Briefcase } from 'lucide-react'
+import { X, MessageCircle, Clock, User, Building2, Tag, Calendar, FileText, Briefcase, MapPin, ExternalLink } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useCandidate, useUpdateCandidate } from '@/hooks/useCandidates'
@@ -246,6 +246,43 @@ export const CandidateModal = ({
 
             {/* Вакансия */}
             <VacancyField vacancy={candidate.vacancy} onUpdate={v => void handleUpdate('vacancy', v)} />
+
+            {/* Город / Локация */}
+            {candidate.location && (
+              <div className="cmodal-field">
+                <div className="cmodal-field-label">
+                  <MapPin size={14} />
+                  Город / Локация
+                </div>
+                <span className="cmodal-value">{candidate.location}</span>
+              </div>
+            )}
+
+            {/* Источник */}
+            {candidate.source && (
+              <div className="cmodal-field">
+                <div className="cmodal-field-label">
+                  <ExternalLink size={14} />
+                  Источник
+                </div>
+                <span className="cmodal-value">{candidate.source}</span>
+              </div>
+            )}
+
+            {/* Дата добавления */}
+            <div className="cmodal-field">
+              <div className="cmodal-field-label">
+                <Clock size={14} />
+                Добавлен
+              </div>
+              <span className="cmodal-value">
+                {new Date(candidate.created_at).toLocaleDateString('ru-RU', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
 
             {/* Теги */}
             <div className="cmodal-field cmodal-field--tags">

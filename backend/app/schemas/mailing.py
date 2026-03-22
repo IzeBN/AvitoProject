@@ -54,6 +54,11 @@ class MailingProgressResponse(BaseModel):
     percent: float = 0.0
 
 
+class CreatedByResponse(BaseModel):
+    id: uuid.UUID
+    full_name: str
+
+
 class MailingJobResponse(BaseModel):
     id: uuid.UUID
     org_id: uuid.UUID
@@ -72,6 +77,7 @@ class MailingJobResponse(BaseModel):
     finished_at: datetime | None
     arq_job_id: str | None
     created_at: datetime
+    created_by: CreatedByResponse | None = None
     progress: MailingProgressResponse | None = None
 
     model_config = {"from_attributes": True}

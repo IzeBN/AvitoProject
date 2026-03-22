@@ -81,12 +81,28 @@ async def list_mailings(
         offset=offset,
         limit=per_page,
     )
+
+    # Загрузить full_name создателей одним запросом
+    from sqlalchemy import select as sa_select
+    from app.models.auth import User as UserModel
+    creator_ids = {job.created_by for job in jobs if job.created_by}
+    creators: dict = {}
+    if creator_ids:
+        rows = await db.execute(
+            sa_select(UserModel.id, UserModel.full_name).where(UserModel.id.in_(creator_ids))
+        )
+        creators = {str(r.id): r.full_name for r in rows}
+
     result = []
     for job in jobs:
         progress_data = await svc.get_progress_from_redis(job.id)
         resp = MailingJobResponse.model_validate(job)
         if progress_data:
             resp.progress = MailingProgressResponse(**progress_data)
+        creator_full_name = creators.get(str(job.created_by))
+        if creator_full_name:
+            from app.schemas.mailing import CreatedByResponse
+            resp.created_by = CreatedByResponse(id=job.created_by, full_name=creator_full_name)
         result.append(resp)
     return result
 

@@ -67,6 +67,7 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
     last_id: uuid.UUID | None = None
     sent = 0
     failed = 0
+    skipped = 0
     processed = 0
     batch_size = 20
 
@@ -114,9 +115,10 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                 result = await session.execute(
                     text("""
                         SELECT mr.id, mr.candidate_id, mr.attempt_count,
-                               c.avito_account_id, c.chat_id, c.avito_user_id
+                               c.avito_account_id, c.chat_id, aa.avito_user_id
                         FROM mailing_recipients mr
                         JOIN candidates c ON c.id = mr.candidate_id
+                        LEFT JOIN avito_accounts aa ON aa.id = c.avito_account_id
                         WHERE mr.mailing_job_id = CAST(:job_id AS UUID) AND mr.status = 'pending'
                         ORDER BY mr.id
                         LIMIT :limit
@@ -127,9 +129,10 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                 result = await session.execute(
                     text("""
                         SELECT mr.id, mr.candidate_id, mr.attempt_count,
-                               c.avito_account_id, c.chat_id, c.avito_user_id
+                               c.avito_account_id, c.chat_id, aa.avito_user_id
                         FROM mailing_recipients mr
                         JOIN candidates c ON c.id = mr.candidate_id
+                        LEFT JOIN avito_accounts aa ON aa.id = c.avito_account_id
                         WHERE mr.mailing_job_id = CAST(:job_id AS UUID)
                           AND mr.status = 'pending'
                           AND mr.id > CAST(:last_id AS UUID)
@@ -150,15 +153,15 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
             attempt_count: int = row[2]
             account_id = row[3]
             chat_id: str = row[4] or ""
-            avito_user_id: int = row[5] or 0
 
             last_id = recipient_id
 
-            if not chat_id or not avito_user_id or not account_id:
-                # Нет данных для отправки — пропустить
+            if not chat_id or not account_id:
+                # Нет chat_id или аккаунта — пропустить
                 await _update_recipient(
                     session_factory, recipient_id, "skipped", attempt_count
                 )
+                skipped += 1
                 continue
 
             # Получить аккаунт
@@ -170,6 +173,9 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
                 )
                 failed += 1
                 continue
+
+            # avito_user_id берём из аккаунта (продавец), не из кандидата
+            avito_user_id = account.avito_user_id
 
             # Отправка с retry при 429
             success = False
@@ -249,10 +255,10 @@ async def run_mailing(ctx: dict, job_id: str) -> None:
         await session.execute(
             text("""
                 UPDATE mailing_jobs
-                SET status = 'done', finished_at = now(), sent = :sent, failed = :failed, updated_at = now()
+                SET status = 'done', finished_at = now(), sent = :sent, failed = :failed, skipped = :skipped, updated_at = now()
                 WHERE id = CAST(:id AS UUID)
             """),
-            {"id": job_id, "sent": sent, "failed": failed},
+            {"id": job_id, "sent": sent, "failed": failed, "skipped": skipped},
         )
         await session.commit()
 

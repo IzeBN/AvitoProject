@@ -43,15 +43,29 @@ export const MessageItem = ({ message }: MessageItemProps) => {
           <p className="msg-text">{message.content}</p>
         )}
 
-        {message.message_type === 'image' && message.media_url && (
-          <div className="msg-image-wrap">
-            <img
-              src={message.media_url}
-              alt="Изображение"
-              className="msg-image"
-              loading="lazy"
-            />
-          </div>
+        {message.message_type === 'image' && (() => {
+          const src = message.media_url ?? (message.content?.startsWith('http') ? message.content : null)
+          return src ? (
+            <div className="msg-image-wrap">
+              <img
+                src={src}
+                alt="Изображение"
+                className="msg-image"
+                loading="lazy"
+              />
+            </div>
+          ) : null
+        })()}
+
+        {message.message_type === 'link' && message.content && (
+          <a
+            href={message.content}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="msg-link"
+          >
+            {message.content}
+          </a>
         )}
 
         {message.message_type === 'voice' && message.media_url && (
@@ -71,6 +85,17 @@ export const MessageItem = ({ message }: MessageItemProps) => {
             <Download size={14} className="msg-file-dl" />
           </a>
         )}
+
+        {message.message_type !== 'text'
+          && message.message_type !== 'image'
+          && message.message_type !== 'link'
+          && message.message_type !== 'voice'
+          && message.message_type !== 'file'
+          && (
+            message.content
+              ? <p className="msg-text">{message.content}</p>
+              : <p className="msg-text" style={{ opacity: 0.6, fontStyle: 'italic' }}>Сообщение</p>
+          )}
 
         <span className="msg-time">{formatTime(message.created_at)}</span>
       </div>
@@ -138,6 +163,12 @@ export const MessageItem = ({ message }: MessageItemProps) => {
           white-space: nowrap;
         }
         .msg-file-dl { flex-shrink: 0; opacity: 0.6; }
+        .msg-link {
+          font-size: 14px;
+          color: inherit;
+          text-decoration: underline;
+          word-break: break-all;
+        }
       `}</style>
     </div>
   )

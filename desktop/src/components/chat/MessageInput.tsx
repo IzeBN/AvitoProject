@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type KeyboardEvent } from 'react'
+import { useState, useRef, useCallback, type KeyboardEvent, type ClipboardEvent } from 'react'
 import { Paperclip, Zap, Send } from 'lucide-react'
 import { FastAnswersPopover } from './FastAnswersPopover'
 
@@ -62,8 +62,19 @@ export const MessageInput = ({
     e.target.value = ''
   }
 
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (file && onAttachFile) {
+      onAttachFile(file)
+    }
+  }, [onAttachFile])
+
   return (
-    <div className="minput-wrap">
+    <div className="minput-wrap" onPaste={handlePaste}>
       <div className="minput-row">
         {/* Быстрые ответы */}
         <div className="minput-popover-anchor">
