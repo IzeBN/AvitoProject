@@ -125,13 +125,14 @@ class MessagingRepository:
         self,
         org_id: uuid.UUID,
         account_id: uuid.UUID,
-        item_id: int,
+        item_id: int | None,
         auto_type: str | None = None,
     ) -> AutoResponseRule | None:
         """
         Найти активное правило: сначала специфичное для item_id (в avito_item_ids),
         потом глобальное (avito_item_ids IS NULL).
         Если auto_type задан — фильтрует по нему.
+        JSONB-массив проверяется через оператор @> (contains).
         """
         from sqlalchemy import text as sa_text
 
@@ -145,20 +146,24 @@ class MessagingRepository:
                 conds.append(AutoResponseRule.auto_type == auto_type)
             return conds
 
-        # Правило с конкретным item_id в массиве avito_item_ids
-        result = await self._db.execute(
-            select(AutoResponseRule)
-            .where(
-                *_base_conditions(),
-                AutoResponseRule.avito_item_ids.isnot(None),
-                sa_text(":item_id = ANY(avito_item_ids)").bindparams(item_id=item_id),
+        # Правило с конкретным item_id в JSONB-массиве avito_item_ids
+        # @> проверяет что массив содержит элемент: '[123]'::jsonb @> jsonb_build_array(123)
+        if item_id:
+            result = await self._db.execute(
+                select(AutoResponseRule)
+                .where(
+                    *_base_conditions(),
+                    AutoResponseRule.avito_item_ids.isnot(None),
+                    sa_text(
+                        "avito_item_ids @> jsonb_build_array(:item_id)"
+                    ).bindparams(item_id=int(item_id)),
+                )
             )
-        )
-        rule = result.scalar_one_or_none()
-        if rule:
-            return rule
+            rule = result.scalar_one_or_none()
+            if rule:
+                return rule
 
-        # Глобальное правило (без конкретных ID)
+        # Глобальное правило (без конкретных ID — применяется ко всем объявлениям)
         result = await self._db.execute(
             select(AutoResponseRule).where(
                 *_base_conditions(),

@@ -54,7 +54,8 @@
       "Bash(grep -n \"FastAnswer\\\\|fast_answer\" /c/Data/projects/AvitoProject/backend/app/models/*.py)",
       "Bash(find /c/Data/projects/AvitoProject/desktop/src -name router* -o -name routes* -o -name App.tsx)",
       "Bash(find /c/Data/projects/AvitoProject/desktop/src -name CandidateModal* -o -name CandidateCard* -o -name CandidateDrawer*)",
-      "Bash(find /c/Data/projects/AvitoProject/desktop/src -name MessageItem*)"
+      "Bash(find /c/Data/projects/AvitoProject/desktop/src -name MessageItem*)",
+      "Bash(find C:DataprojectsAvitoProjectdesktopsrc -name *candidate* -o -name *table*)"
     ]
   }
 }

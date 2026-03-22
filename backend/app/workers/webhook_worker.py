@@ -386,11 +386,11 @@ async def handle_new_response(
                 except Exception:
                     logger.warning("handle_new_response: failed to apply auto-tag candidate=%s", candidate_id)
 
-        # Проверяем auto_response_rules
-        if avito_item_id and avito_account_id:
+        # Проверяем auto_response_rules (глобальные правила работают даже без item_id)
+        if chat_id:
             try:
                 await _check_and_send_auto_response(
-                    ctx, _org_id, _account_id, chat_id, avito_item_id,
+                    ctx, _org_id, _account_id, chat_id, avito_item_id or None,
                     auto_type="on_response",
                 )
             except Exception:
@@ -497,6 +497,23 @@ async def handle_new_message(
             acc_row = acc_result.fetchone()
             account_avito_user_id: int | None = acc_row[0] if acc_row else None
             account_department_id: str | None = str(acc_row[1]) if acc_row and acc_row[1] else None
+
+            # Проверить: кандидат уже существует?
+            _cand_exists_row = None
+            if chat_id:
+                _cand_exists_row = (await session.execute(
+                    text("SELECT id FROM candidates WHERE org_id = CAST(:org_id AS UUID) AND chat_id = :chat_id LIMIT 1"),
+                    {"org_id": str(_org_id), "chat_id": chat_id},
+                )).fetchone()
+
+        # Если кандидата ещё нет — подождать 15 сек, чтобы хук об отклике
+        # (который несёт больше данных) успел обработаться первым.
+        if not _cand_exists_row and chat_id:
+            import asyncio
+            logger.info(
+                "handle_new_message: candidate not found yet, deferring 15s chat_id=%s", chat_id
+            )
+            await asyncio.sleep(15)
 
         # Пропустить собственные сообщения аккаунта
         if account_avito_user_id and author_id and int(author_id) == account_avito_user_id:
@@ -685,11 +702,11 @@ async def handle_new_message(
                     _item_row = _item_result.fetchone()
                     _item_id = _item_row[0] if _item_row and _item_row[0] else None
 
-                if _item_id:
-                    await _check_and_send_auto_response(
-                        ctx, _org_id, _account_id, chat_id, _item_id,
-                        auto_type="on_first_message",
-                    )
+                # Глобальные правила работают даже без item_id
+                await _check_and_send_auto_response(
+                    ctx, _org_id, _account_id, chat_id, _item_id,
+                    auto_type="on_first_message",
+                )
             except Exception:
                 logger.warning(
                     "handle_new_message: auto_response failed chat_id=%s", chat_id,
@@ -1000,18 +1017,17 @@ async def _handle_system_message(
             {"type": "new_candidate", "candidate_id": str(candidate_id)},
         )
 
-        # Авто-ответ
-        if avito_item_id:
-            try:
-                await _check_and_send_auto_response(
-                    ctx, org_id, account_id, chat_id, avito_item_id,
-                    auto_type="on_response",
-                )
-            except Exception:
-                logger.warning(
-                    "_handle_system_message: auto_response failed chat_id=%s", chat_id,
-                    exc_info=True,
-                )
+        # Авто-ответ (глобальные правила работают даже без item_id)
+        try:
+            await _check_and_send_auto_response(
+                ctx, org_id, account_id, chat_id, avito_item_id or None,
+                auto_type="on_response",
+            )
+        except Exception:
+            logger.warning(
+                "_handle_system_message: auto_response failed chat_id=%s", chat_id,
+                exc_info=True,
+            )
 
         logger.info(
             "_handle_system_message: response created candidate_id=%s chat_id=%s",
