@@ -5,6 +5,9 @@ import { useChatList, useChatMessages, useSendMessage, chatKeys } from '@/hooks/
 import { useCandidate } from '@/hooks/useCandidates'
 import { useDebounce } from '@/hooks/useDebounce'
 import { chatApi } from '@/api/chat'
+import { settingsApi } from '@/api/settings'
+import { usersApi } from '@/api/users'
+import { CandidateModal } from '@/components/candidates/CandidateModal'
 import { ChatList } from '@/components/chat/ChatList'
 import { MessagesList } from '@/components/chat/MessagesList'
 import { MessageInput } from '@/components/chat/MessageInput'
@@ -138,6 +141,7 @@ export default function MessengerPage() {
   const [stageId, setStageId] = useState(() => searchParams.get('stage_id') ?? '')
   const [responsibleId, setResponsibleId] = useState(() => searchParams.get('responsible_id') ?? '')
   const [candidatePanelOpen, setCandidatePanelOpen] = useState(false)
+  const [editCandidateId, setEditCandidateId] = useState<string | null>(null)
 
   const [filtersOpen, setFiltersOpen] = useState(() => {
     const stored = localStorage.getItem(LS_FILTERS_OPEN)
@@ -175,11 +179,23 @@ export default function MessengerPage() {
     responsible_id: responsibleId || undefined,
   })
 
+  const { data: stages = [] } = useQuery({ queryKey: ['stages'], queryFn: () => settingsApi.getStages(), staleTime: 5 * 60_000 })
+  const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: () => settingsApi.getTags(), staleTime: 5 * 60_000 })
+  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: () => settingsApi.getDepartments(), staleTime: 5 * 60_000 })
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.getList(), staleTime: 60_000 })
+  const responsibles = users.map((u: { id: string; full_name: string }) => ({ id: u.id, name: u.full_name }))
+
   const { data: filterOptions } = useQuery({
     queryKey: ['chat-filters'],
     queryFn: () => chatApi.getFilters(),
     staleTime: 120_000,
   })
+
+  const { data: stages = [] } = useQuery({ queryKey: ['stages'], queryFn: () => settingsApi.getStages(), staleTime: 5 * 60_000 })
+  const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: () => settingsApi.getTags(), staleTime: 5 * 60_000 })
+  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: () => settingsApi.getDepartments(), staleTime: 5 * 60_000 })
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.getList(), staleTime: 60_000 })
+  const responsibles = users.map(u => ({ id: u.id, name: u.full_name }))
 
   // Derive selected chat from URL param
   const selectedChat: ChatListItem | null = urlCandidateId
@@ -358,11 +374,24 @@ export default function MessengerPage() {
               <CandidatePanel
                 candidateId={candidateId}
                 onClose={() => setCandidatePanelOpen(false)}
-                onNavigate={(id) => navigate(`/candidates?open=${id}`)}
+                onNavigate={(id) => { setEditCandidateId(id); setCandidatePanelOpen(false) }}
               />
             )}
           </>
         )}
+
+        <CandidateModal
+          candidateId={editCandidateId}
+          onClose={() => setEditCandidateId(null)}
+          onOpenChat={(candidate) => {
+            setEditCandidateId(null)
+            navigate(`/messenger/${candidate.id}`)
+          }}
+          stages={stages}
+          responsibles={responsibles}
+          departments={departments}
+          tags={tags}
+        />
       </div>
 
       <style>{`

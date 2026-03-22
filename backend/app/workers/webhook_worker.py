@@ -205,6 +205,27 @@ async def handle_new_response(
 
             await session.commit()
 
+        # Применить авто-тег к новому кандидату
+        if candidate_id:
+            auto_tag_id_bytes = await redis.get(f"org:{org_id}:auto_tag_id")
+            if auto_tag_id_bytes:
+                auto_tag_id_str = auto_tag_id_bytes.decode()
+                try:
+                    async with session_factory() as session:
+                        from sqlalchemy import text
+                        await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                        await session.execute(
+                            text("""
+                                INSERT INTO candidate_tags (candidate_id, tag_id, org_id)
+                                VALUES (CAST(:cid AS UUID), CAST(:tid AS UUID), CAST(:oid AS UUID))
+                                ON CONFLICT DO NOTHING
+                            """),
+                            {"cid": str(candidate_id), "tid": auto_tag_id_str, "oid": org_id},
+                        )
+                        await session.commit()
+                except Exception:
+                    logger.warning("handle_new_response: failed to apply auto-tag candidate=%s", candidate_id)
+
         # Проверяем auto_response_rules
         if avito_item_id and avito_account_id:
             try:
@@ -440,6 +461,27 @@ async def handle_new_message(
         if not candidate_id:
             logger.warning("handle_new_message: no candidate_id, chat_id=%s", chat_id)
             return
+
+        # Применить авто-тег к новому кандидату
+        if is_new_candidate and candidate_id:
+            auto_tag_id_bytes = await redis.get(f"org:{org_id}:auto_tag_id")
+            if auto_tag_id_bytes:
+                auto_tag_id_str = auto_tag_id_bytes.decode()
+                try:
+                    async with session_factory() as session:
+                        from sqlalchemy import text
+                        await session.execute(text("SET LOCAL app.is_superadmin = 'true'"))
+                        await session.execute(
+                            text("""
+                                INSERT INTO candidate_tags (candidate_id, tag_id, org_id)
+                                VALUES (CAST(:cid AS UUID), CAST(:tid AS UUID), CAST(:oid AS UUID))
+                                ON CONFLICT DO NOTHING
+                            """),
+                            {"cid": str(candidate_id), "tid": auto_tag_id_str, "oid": org_id},
+                        )
+                        await session.commit()
+                except Exception:
+                    logger.warning("handle_new_message: failed to apply auto-tag candidate=%s", candidate_id)
 
         # Попытаться обогатить нового кандидата данными из Avito API
         if is_new_candidate:

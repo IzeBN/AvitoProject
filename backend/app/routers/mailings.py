@@ -93,16 +93,21 @@ async def list_mailings(
         )
         creators = {str(r.id): r.full_name for r in rows}
 
+    from app.schemas.mailing import CreatedByResponse
+
     result = []
     for job in jobs:
         progress_data = await svc.get_progress_from_redis(job.id)
-        resp = MailingJobResponse.model_validate(job)
+        raw_creator_id = getattr(job, "created_by", None)
+        job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+        job_dict["created_by"] = None
+        resp = MailingJobResponse.model_validate(job_dict)
         if progress_data:
             resp.progress = MailingProgressResponse(**progress_data)
-        creator_full_name = creators.get(str(job.created_by))
-        if creator_full_name:
-            from app.schemas.mailing import CreatedByResponse
-            resp.created_by = CreatedByResponse(id=job.created_by, full_name=creator_full_name)
+        if raw_creator_id:
+            creator_full_name = creators.get(str(raw_creator_id))
+            if creator_full_name:
+                resp.created_by = CreatedByResponse(id=raw_creator_id, full_name=creator_full_name)
         result.append(resp)
     return result
 
@@ -153,7 +158,9 @@ async def create_mailing(
         await _enqueue_mailing(request, str(job.id))
 
     await db.commit()
-    return MailingJobResponse.model_validate(job)
+    _job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+    _job_dict["created_by"] = None
+    return MailingJobResponse.model_validate(_job_dict)
 
 
 # ===========================================================================
@@ -178,7 +185,9 @@ async def get_mailing(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рассылка не найдена")
 
     progress_data = await svc.get_progress_from_redis(job.id)
-    resp = MailingJobResponse.model_validate(job)
+    job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+    job_dict["created_by"] = None
+    resp = MailingJobResponse.model_validate(job_dict)
     if progress_data:
         resp.progress = MailingProgressResponse(**progress_data)
     return resp
@@ -315,7 +324,9 @@ async def create_mailing_by_ids(
     if body.scheduled_at is None:
         await _enqueue_mailing(request, str(job.id))
     await db.commit()
-    return MailingJobResponse.model_validate(job)
+    _job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+    _job_dict["created_by"] = None
+    return MailingJobResponse.model_validate(_job_dict)
 
 
 @router.post(
@@ -357,7 +368,9 @@ async def create_mailing_by_phones(
         await _enqueue_mailing(request, str(job.id))
 
     await db.commit()
-    return MailingJobResponse.model_validate(job)
+    _job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+    _job_dict["created_by"] = None
+    return MailingJobResponse.model_validate(_job_dict)
 
 
 @router.post(
@@ -392,7 +405,9 @@ async def create_mailing_by_filters(
     if body.scheduled_at is None:
         await _enqueue_mailing(request, str(job.id))
     await db.commit()
-    return MailingJobResponse.model_validate(job)
+    _job_dict = {c.key: getattr(job, c.key) for c in job.__table__.columns}
+    _job_dict["created_by"] = None
+    return MailingJobResponse.model_validate(_job_dict)
 
 
 @router.post(

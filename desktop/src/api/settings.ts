@@ -54,6 +54,12 @@ export const settingsApi = {
   deleteDepartment: (id: string) =>
     apiClient.delete(`/settings/departments/${id}`).then(r => r.data),
 
+  // Org settings
+  getOrgSettings: () =>
+    apiClient.get<{ auto_tag_id: string | null }>('/settings/org').then(r => r.data),
+  updateOrgSettings: (data: { auto_tag_id: string | null }) =>
+    apiClient.put('/settings/org', data).then(r => r.data),
+
   // Role permissions
   getRolePermissions: (role: string) =>
     apiClient.get(`/settings/role-permissions/${role}`).then(r => r.data),

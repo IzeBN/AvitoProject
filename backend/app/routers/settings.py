@@ -653,3 +653,50 @@ async def set_role_permissions(
         await redis.delete(f"user:{row.id}:permissions")
 
     return {"ok": True}
+
+
+# ===========================================================================
+# Org settings (auto-tag etc.)
+# ===========================================================================
+
+class OrgSettingsResponse(BaseModel):
+    auto_tag_id: str | None = None
+
+class OrgSettingsUpdate(BaseModel):
+    auto_tag_id: str | None = None
+
+
+@router.get(
+    "/org",
+    response_model=OrgSettingsResponse,
+    summary="Настройки организации",
+    dependencies=[Depends(require_permission("crm.candidates.view"))],
+)
+async def get_org_settings(
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> OrgSettingsResponse:
+    org_id = request.state.org_id
+    auto_tag_id = await redis.get(f"org:{org_id}:auto_tag_id")
+    return OrgSettingsResponse(auto_tag_id=auto_tag_id.decode() if auto_tag_id else None)
+
+
+@router.put(
+    "/org",
+    response_model=OrgSettingsResponse,
+    summary="Обновить настройки организации",
+    dependencies=[Depends(require_permission("crm.settings.manage"))],
+)
+async def update_org_settings(
+    data: OrgSettingsUpdate,
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> OrgSettingsResponse:
+    org_id = request.state.org_id
+    if data.auto_tag_id:
+        await redis.set(f"org:{org_id}:auto_tag_id", data.auto_tag_id)
+    else:
+        await redis.delete(f"org:{org_id}:auto_tag_id")
+    return OrgSettingsResponse(auto_tag_id=data.auto_tag_id)

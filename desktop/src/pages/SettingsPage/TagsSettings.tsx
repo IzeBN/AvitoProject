@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { settingsApi, type Tag } from '@/api/settings'
 import { Badge } from '@/components/ui/Badge'
@@ -26,10 +26,32 @@ export default function TagsSettings() {
   const qc = useQueryClient()
   const showToast = useUIStore(s => s.showToast)
 
+  const [autoTagId, setAutoTagId] = useState<string>('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingTag, setEditingTag] = useState<Tag | null>(null)
   const [formState, setFormState] = useState<TagFormState>(defaultForm())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  const { data: orgSettings } = useQuery({
+    queryKey: ['org-settings'],
+    queryFn: () => settingsApi.getOrgSettings(),
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (orgSettings !== undefined) {
+      setAutoTagId(orgSettings.auto_tag_id ?? '')
+    }
+  }, [orgSettings])
+
+  const saveAutoTag = useMutation({
+    mutationFn: (id: string | null) => settingsApi.updateOrgSettings({ auto_tag_id: id || null }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['org-settings'] })
+      showToast('success', 'Настройки сохранены')
+    },
+    onError: () => showToast('error', 'Не удалось сохранить настройки'),
+  })
 
   const { data: tags, isLoading, isError } = useQuery({
     queryKey: ['settings', 'tags'],
@@ -91,7 +113,52 @@ export default function TagsSettings() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 800 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 800 }}>
+      {/* Auto-tag section */}
+      <div style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius)',
+        padding: '16px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>Автотег для новых кандидатов</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          Тег, который будет автоматически присваиваться новым кандидатам при добавлении.
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select
+            value={autoTagId}
+            onChange={e => setAutoTagId(e.target.value)}
+            style={{
+              height: 34,
+              padding: '0 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg)',
+              color: 'var(--color-text)',
+              fontSize: 13,
+              minWidth: 200,
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">Без тега</option>
+            {(tags ?? []).map(tag => (
+              <option key={tag.id} value={tag.id}>{tag.name}</option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            loading={saveAutoTag.isPending}
+            onClick={() => saveAutoTag.mutate(autoTagId || null)}
+          >
+            Сохранить
+          </Button>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button
           icon={<Plus size={15} />}
