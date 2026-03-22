@@ -342,7 +342,7 @@ def upgrade() -> None:
     op.create_index("idx_chat_msgs_chat_created", "chat_messages", ["chat_id", "created_at"])
     op.create_index("idx_chat_msgs_candidate", "chat_messages", ["candidate_id", "created_at"])
     op.create_index("idx_chat_msgs_avito_id", "chat_messages", ["avito_message_id"],
-                    postgresql_where=sa.text("avito_message_id IS NOT NULL"))
+                    unique=True, postgresql_where=sa.text("avito_message_id IS NOT NULL"))
 
     # ------------------------------------------------------------------
     # chat_metadata

@@ -46,7 +46,8 @@
       "Bash(echo \"EXIT: $?\")",
       "Read(//c/Data/projects/**)",
       "Bash(git -C \"C:/Data/projects/AvitoProject\" status --short)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(grep -r chat_messages /c/Data/projects/AvitoProject/backend/alembic/versions/ --include=*.py -l)"
     ]
   }
 }

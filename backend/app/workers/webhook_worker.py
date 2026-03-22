@@ -303,14 +303,16 @@ async def handle_new_message(
                         INSERT INTO chat_messages (
                             org_id, candidate_id, chat_id, avito_message_id,
                             content, message_type, author_type, created_at
-                        ) VALUES (
+                        )
+                        SELECT
                             CAST(:org_id AS UUID), CAST(:candidate_id AS UUID), :chat_id,
                             :avito_message_id, :content, :message_type, 'candidate',
                             COALESCE(CAST(:created_at AS TIMESTAMPTZ), now())
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM chat_messages
+                            WHERE avito_message_id = :avito_message_id
+                              AND avito_message_id IS NOT NULL
                         )
-                        ON CONFLICT (avito_message_id)
-                        WHERE avito_message_id IS NOT NULL
-                        DO NOTHING
                     """),
                     {
                         "org_id": str(_org_id),
