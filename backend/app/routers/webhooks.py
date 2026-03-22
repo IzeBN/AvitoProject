@@ -95,7 +95,6 @@ async def avito_messages_webhook(
             "handle_new_message",
             account_data["org_id"],
             account_data["avito_account_id"],
-            avito_user_id,
             payload,
         )
 
@@ -139,7 +138,6 @@ async def avito_responses_webhook(
             "handle_new_response",
             account_data["org_id"],
             account_data["avito_account_id"],
-            avito_user_id,
             payload,
         )
 
