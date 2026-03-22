@@ -78,19 +78,19 @@ export default function MessengerPage() {
     }
   }, [searchParams, chats, setSearchParams])
 
-  // Сообщения выбранного чата
-  const chatId = selectedChat?.chat_id ?? ''
-  const { data: messages = [], isLoading: messagesLoading } = useChatMessages(chatId)
-  const sendMessage = useSendMessage(chatId)
+  // Сообщения выбранного чата (используем candidate_id как ключ)
+  const candidateId = selectedChat?.candidate_id ?? ''
+  const { data: messages = [], isLoading: messagesLoading } = useChatMessages(candidateId)
+  const sendMessage = useSendMessage(candidateId)
 
   // WS: реалтайм новые сообщения
   useEffect(() => {
-    const unsub = wsManager.on('new_message', (msg) => {
-      const incomingChatId = String(msg.chat_id ?? '')
-      if (!incomingChatId) return
+    const unsubMsg = wsManager.on('new_message', (msg) => {
+      const incomingCandidateId = String(msg.candidate_id ?? '')
+      if (!incomingCandidateId) return
 
       qc.setQueryData(
-        chatKeys.messages(incomingChatId),
+        chatKeys.messages(incomingCandidateId),
         (old: Message[] | undefined) => {
           if (!old) return old
           const newMsg = msg as unknown as Message
@@ -101,13 +101,22 @@ export default function MessengerPage() {
 
       void qc.invalidateQueries({ queryKey: chatKeys.all })
     })
-    return unsub
+
+    // WS: новый кандидат/отклик — обновляем список чатов
+    const unsubCandidate = wsManager.on('new_candidate', () => {
+      void qc.invalidateQueries({ queryKey: chatKeys.all })
+    })
+
+    return () => {
+      unsubMsg()
+      unsubCandidate()
+    }
   }, [qc])
 
   const handleSelectChat = useCallback(async (chat: ChatListItem) => {
     setSelectedChat(chat)
     try {
-      await chatApi.markRead(chat.chat_id)
+      await chatApi.markRead(chat.candidate_id)
       void qc.invalidateQueries({ queryKey: chatKeys.all })
     } catch {
       // silent — не критично
@@ -115,13 +124,13 @@ export default function MessengerPage() {
   }, [qc])
 
   const handleSend = useCallback(async (text: string) => {
-    if (!chatId) return
+    if (!candidateId) return
     try {
       await sendMessage.mutateAsync(text)
     } catch {
       showToast('error', 'Не удалось отправить сообщение')
     }
-  }, [chatId, sendMessage, showToast])
+  }, [candidateId, sendMessage, showToast])
 
   const handleLoadMore = useCallback(() => {
     // Cursor pagination будет реализована с useInfiniteQuery при обновлении API

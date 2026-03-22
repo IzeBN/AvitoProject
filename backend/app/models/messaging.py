@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import TIMESTAMP
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 TIMESTAMPTZ = TIMESTAMP(timezone=True)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -133,8 +133,10 @@ class AutoResponseRule(Base):
         ForeignKey("avito_accounts.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # NULL = для всех объявлений аккаунта
-    avito_item_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # NULL = для всех объявлений аккаунта; список ID объявлений
+    avito_item_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+    # Кастомный текст автоответа (если None — используется DefaultMessage)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
     auto_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

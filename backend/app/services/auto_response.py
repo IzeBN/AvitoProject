@@ -44,10 +44,12 @@ class AutoResponseService:
         if rule is None:
             return False
 
-        # Определяем текст: item → default
-        message_text = await self._resolve_message_text(
-            account.org_id, account.id, item_id
-        )
+        # Определяем текст: rule.message → item → default
+        message_text: str | None = rule.message if rule.message else None
+        if not message_text:
+            message_text = await self._resolve_message_text(
+                account.org_id, account.id, item_id
+            )
         if not message_text:
             logger.warning(
                 "auto_response: no message text for account=%s item=%s",

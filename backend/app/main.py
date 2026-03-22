@@ -295,6 +295,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
+        redirect_slashes=False,
         title="AvitoСRM API",
         version="1.0.0",
         description=(

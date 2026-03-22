@@ -55,13 +55,15 @@ class ItemMessageResponse(BaseModel):
 
 class AutoResponseRuleCreate(BaseModel):
     avito_account_id: uuid.UUID
-    avito_item_id: int | None = None
+    avito_item_ids: list[int] | None = None
+    message: str | None = None
     auto_type: str = Field(default="on_response", max_length=50)
     is_active: bool = True
 
 
 class AutoResponseRulePatch(BaseModel):
-    avito_item_id: int | None = None
+    avito_item_ids: list[int] | None = None
+    message: str | None = None
     auto_type: str | None = None
     is_active: bool | None = None
 
@@ -70,7 +72,8 @@ class AutoResponseRuleResponse(BaseModel):
     id: uuid.UUID
     org_id: uuid.UUID
     avito_account_id: uuid.UUID
-    avito_item_id: int | None
+    avito_item_ids: list[int] | None
+    message: str | None
     auto_type: str
     is_active: bool
     created_at: datetime

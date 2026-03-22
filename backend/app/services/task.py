@@ -140,6 +140,18 @@ class TaskService:
             human_readable=f"Создана задача: {task.title}",
         )
 
+        # WS уведомление назначенному пользователю (только если назначили другому)
+        if responsible_id and responsible_id != user_id:
+            try:
+                from app.routers.ws import ws_manager
+                await ws_manager.send_to_user(responsible_id, {
+                    "type": "task_assigned",
+                    "task_id": str(task.id),
+                    "title": task.title,
+                })
+            except Exception:
+                pass
+
         return _build_task_response(task)
 
     async def update(

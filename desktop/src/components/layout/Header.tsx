@@ -1,5 +1,8 @@
-import { Bell } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Bell, CheckCheck, ClipboardList } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
+import { useNotificationsStore } from '@/stores/notifications.store'
+import { useNavigate } from 'react-router-dom'
 
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Суперадмин',
@@ -10,8 +13,37 @@ const ROLE_LABELS: Record<string, string> = {
 
 export const Header = () => {
   const user = useAuthStore(s => s.user)
+  const navigate = useNavigate()
+  const { notifications, unread, markAllRead } = useNotificationsStore()
+  const [open, setOpen] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const roleLabel = user?.role ? (ROLE_LABELS[user.role] ?? user.role) : null
+
+  // Закрыть при клике вне панели
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (!panelRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const handleBellClick = () => {
+    setOpen(prev => !prev)
+    if (!open && unread > 0) markAllRead()
+  }
+
+  const handleNotificationClick = (taskId?: string) => {
+    setOpen(false)
+    if (taskId) navigate('/tasks')
+  }
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  }
 
   return (
     <header className="header">
@@ -30,9 +62,60 @@ export const Header = () => {
       <div className="header-spacer" />
 
       <div className="header-right">
-        <button className="header-icon-btn" aria-label="Уведомления">
-          <Bell size={18} />
-        </button>
+        {/* Колокольчик с уведомлениями */}
+        <div ref={panelRef} style={{ position: 'relative' }}>
+          <button
+            className="header-icon-btn"
+            aria-label="Уведомления"
+            onClick={handleBellClick}
+            style={{ position: 'relative' }}
+          >
+            <Bell size={18} />
+            {unread > 0 && (
+              <span className="header-notif-badge">{unread > 9 ? '9+' : unread}</span>
+            )}
+          </button>
+
+          {open && (
+            <div className="notif-panel">
+              <div className="notif-panel-header">
+                <span>Уведомления</span>
+                {notifications.length > 0 && (
+                  <button className="notif-clear-btn" onClick={() => useNotificationsStore.getState().clear()}>
+                    Очистить
+                  </button>
+                )}
+              </div>
+
+              {notifications.length === 0 ? (
+                <div className="notif-empty">
+                  <CheckCheck size={28} style={{ opacity: 0.3 }} />
+                  <span>Всё прочитано</span>
+                </div>
+              ) : (
+                <div className="notif-list">
+                  {notifications.map(n => (
+                    <button
+                      key={n.id}
+                      className="notif-item"
+                      onClick={() => handleNotificationClick(n.task_id)}
+                    >
+                      <div className="notif-item-icon">
+                        <ClipboardList size={16} />
+                      </div>
+                      <div className="notif-item-content">
+                        <div className="notif-item-title">{n.title}</div>
+                        <div className="notif-item-body">{n.body}</div>
+                        <div className="notif-item-time">{formatTime(n.created_at)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="header-avatar" title={user?.full_name}>
           {user?.full_name?.charAt(0).toUpperCase() ?? '?'}
         </div>
@@ -89,6 +172,115 @@ export const Header = () => {
           color: var(--color-text-secondary);
         }
         .header-icon-btn:hover { background: var(--color-bg); color: var(--color-text); }
+        .header-notif-badge {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          min-width: 16px;
+          height: 16px;
+          padding: 0 4px;
+          background: var(--color-danger);
+          color: #fff;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+          pointer-events: none;
+        }
+        .notif-panel {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          width: 320px;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          box-shadow: var(--shadow-md);
+          z-index: 200;
+          overflow: hidden;
+        }
+        .notif-panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          font-size: 13px;
+          font-weight: 600;
+          border-bottom: 1px solid var(--color-border);
+        }
+        .notif-clear-btn {
+          font-size: 12px;
+          color: var(--color-text-secondary);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+        }
+        .notif-clear-btn:hover { color: var(--color-text); }
+        .notif-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 32px;
+          color: var(--color-text-secondary);
+          font-size: 13px;
+        }
+        .notif-list {
+          max-height: 360px;
+          overflow-y: auto;
+        }
+        .notif-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 16px;
+          width: 100%;
+          text-align: left;
+          border-bottom: 1px solid var(--color-border);
+          transition: background 0.15s;
+          cursor: pointer;
+          background: none;
+          border-left: none;
+          border-right: none;
+          border-top: none;
+        }
+        .notif-item:last-child { border-bottom: none; }
+        .notif-item:hover { background: var(--color-bg); }
+        .notif-item-icon {
+          flex-shrink: 0;
+          width: 28px;
+          height: 28px;
+          border-radius: var(--radius-sm);
+          background: var(--color-primary);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 2px;
+        }
+        .notif-item-content { flex: 1; min-width: 0; }
+        .notif-item-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--color-text);
+          margin-bottom: 2px;
+        }
+        .notif-item-body {
+          font-size: 12px;
+          color: var(--color-text-secondary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .notif-item-time {
+          font-size: 11px;
+          color: var(--color-text-secondary);
+          margin-top: 4px;
+        }
         .header-avatar {
           width: 32px;
           height: 32px;

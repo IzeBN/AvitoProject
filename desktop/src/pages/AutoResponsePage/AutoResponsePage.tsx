@@ -369,9 +369,13 @@ function RulesTab() {
   const qc = useQueryClient()
   const showToast = useUIStore(s => s.showToast)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingRule, setEditingRule] = useState<AutoResponseRule | null>(null)
   const [newAccountId, setNewAccountId] = useState('')
-  const [newItemId, setNewItemId] = useState('')
+  const [newItemIds, setNewItemIds] = useState('')   // comma-separated
   const [newAutoType, setNewAutoType] = useState('on_message')
+  const [newMessage, setNewMessage] = useState('')
+  const [editItemIds, setEditItemIds] = useState('')
+  const [editMessage, setEditMessage] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data: rules, isLoading } = useQuery({
@@ -386,11 +390,17 @@ function RulesTab() {
     staleTime: 120_000,
   })
 
+  const parseItemIds = (raw: string): number[] | undefined => {
+    const ids = raw.split(/[\s,;]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0)
+    return ids.length > 0 ? ids : undefined
+  }
+
   const createMutation = useMutation({
     mutationFn: () =>
       autoResponseApi.createRule({
         avito_account_id: newAccountId,
-        avito_item_id: newItemId ? parseInt(newItemId) : undefined,
+        avito_item_ids: parseItemIds(newItemIds),
+        message: newMessage.trim() || undefined,
         auto_type: newAutoType,
       }),
     onSuccess: () => {
@@ -398,9 +408,24 @@ function RulesTab() {
       showToast('success', 'Правило добавлено')
       setShowAddModal(false)
       setNewAccountId('')
-      setNewItemId('')
+      setNewItemIds('')
+      setNewMessage('')
     },
     onError: () => showToast('error', 'Не удалось создать правило'),
+  })
+
+  const editMutation = useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      autoResponseApi.updateRule(id, {
+        avito_item_ids: parseItemIds(editItemIds),
+        message: editMessage.trim() || undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['auto-response', 'rules'] })
+      showToast('success', 'Правило обновлено')
+      setEditingRule(null)
+    },
+    onError: () => showToast('error', 'Не удалось обновить правило'),
   })
 
   const toggleMutation = useMutation({
@@ -419,6 +444,12 @@ function RulesTab() {
     onError: () => showToast('error', 'Не удалось удалить правило'),
   })
 
+  const openEdit = (row: AutoResponseRule) => {
+    setEditingRule(row)
+    setEditItemIds(row.avito_item_ids?.join(', ') ?? '')
+    setEditMessage(row.message ?? '')
+  }
+
   const columns: Column<AutoResponseRule>[] = [
     {
       key: 'account',
@@ -427,9 +458,21 @@ function RulesTab() {
     },
     {
       key: 'item',
-      title: 'Объявление',
+      title: 'Объявления',
       render: row =>
-        row.avito_item_id ? `#${row.avito_item_id}` : <Badge variant="info">Все объявления</Badge>,
+        row.avito_item_ids?.length
+          ? row.avito_item_ids.map(id => `#${id}`).join(', ')
+          : <Badge variant="info">Все объявления</Badge>,
+    },
+    {
+      key: 'message',
+      title: 'Сообщение',
+      render: row =>
+        row.message
+          ? <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }} title={row.message}>
+              {row.message.length > 40 ? row.message.slice(0, 40) + '…' : row.message}
+            </span>
+          : <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>По умолчанию</span>,
     },
     {
       key: 'type',
@@ -455,15 +498,20 @@ function RulesTab() {
     {
       key: 'actions',
       title: '',
-      width: 48,
+      width: 80,
       align: 'center',
       render: row => (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Trash2 size={14} />}
-          onClick={() => setDeleteId(row.id)}
-        />
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+          <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
+            Изменить
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 size={14} />}
+            onClick={() => setDeleteId(row.id)}
+          />
+        </div>
       ),
     },
   ]
@@ -486,6 +534,7 @@ function RulesTab() {
         />
       </div>
 
+      {/* Создать правило */}
       <Modal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -521,10 +570,10 @@ function RulesTab() {
             </select>
           </div>
           <Input
-            label="ID объявления (опционально)"
-            placeholder="Оставьте пустым для всех объявлений"
-            value={newItemId}
-            onChange={e => setNewItemId(e.target.value)}
+            label="ID объявлений (через запятую)"
+            placeholder="Например: 123456, 789012 — или пусто для всех"
+            value={newItemIds}
+            onChange={e => setNewItemIds(e.target.value)}
           />
           <div>
             <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 4 }}>
@@ -538,6 +587,83 @@ function RulesTab() {
               <option value="on_message">На входящее сообщение</option>
               <option value="on_response">На отклик</option>
             </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 4 }}>
+              Текст сообщения
+            </label>
+            <textarea
+              value={newMessage}
+              onChange={e => setNewMessage(e.target.value)}
+              rows={3}
+              placeholder="Оставьте пустым — будет использоваться сообщение по умолчанию"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                fontSize: 13,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--color-surface)',
+                color: 'var(--color-text)',
+                resize: 'vertical',
+                outline: 'none',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Редактировать правило */}
+      <Modal
+        open={editingRule !== null}
+        onClose={() => setEditingRule(null)}
+        title="Редактировать правило"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditingRule(null)}>Отмена</Button>
+            <Button
+              loading={editMutation.isPending}
+              onClick={() => { if (editingRule) editMutation.mutate({ id: editingRule.id }) }}
+            >
+              Сохранить
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Input
+            label="ID объявлений (через запятую)"
+            placeholder="Например: 123456, 789012 — или пусто для всех"
+            value={editItemIds}
+            onChange={e => setEditItemIds(e.target.value)}
+          />
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 4 }}>
+              Текст сообщения
+            </label>
+            <textarea
+              autoFocus
+              value={editMessage}
+              onChange={e => setEditMessage(e.target.value)}
+              rows={4}
+              placeholder="Оставьте пустым — будет использоваться сообщение по умолчанию"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                fontSize: 13,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--color-surface)',
+                color: 'var(--color-text)',
+                resize: 'vertical',
+                outline: 'none',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
         </div>
       </Modal>

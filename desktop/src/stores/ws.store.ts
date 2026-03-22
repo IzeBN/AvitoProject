@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { wsManager } from '@/api/websocket'
 import { native } from '@/services/native'
+import { useNotificationsStore } from '@/stores/notifications.store'
 
 /**
  * Регистрирует обработчики WebSocket-событий.
@@ -34,10 +35,22 @@ export function initWebSocketHandlers(queryClient: QueryClient): () => void {
     }
   })
 
+  const unsubTaskAssigned = wsManager.on('task_assigned', async (msg) => {
+    const title = String(msg.title ?? 'Новая задача')
+    useNotificationsStore.getState().add({
+      type: 'task_assigned',
+      title: 'Вам назначена задача',
+      body: title,
+      task_id: msg.task_id ? String(msg.task_id) : undefined,
+    })
+    await native.notify('Вам назначена задача', title)
+  })
+
   return () => {
     unsubNewCandidate()
     unsubNewMessage()
     unsubMailingProgress()
     unsubOrgAccess()
+    unsubTaskAssigned()
   }
 }

@@ -125,29 +125,32 @@ class MessagingRepository:
         self, org_id: uuid.UUID, account_id: uuid.UUID, item_id: int
     ) -> AutoResponseRule | None:
         """
-        Найти активное правило: сначала специфичное для item_id,
-        потом глобальное (item_id IS NULL).
+        Найти активное правило: сначала специфичное для item_id (в avito_item_ids),
+        потом глобальное (avito_item_ids IS NULL).
         """
+        from sqlalchemy import text as sa_text
+        # Правило с конкретным item_id в массиве avito_item_ids
         result = await self._db.execute(
             select(AutoResponseRule)
             .where(
                 AutoResponseRule.org_id == org_id,
                 AutoResponseRule.avito_account_id == account_id,
                 AutoResponseRule.is_active.is_(True),
-                AutoResponseRule.avito_item_id == item_id,
+                AutoResponseRule.avito_item_ids.isnot(None),
+                sa_text(f":item_id = ANY(avito_item_ids)").bindparams(item_id=item_id),
             )
         )
         rule = result.scalar_one_or_none()
         if rule:
             return rule
 
-        # Глобальное правило
+        # Глобальное правило (без конкретных ID)
         result = await self._db.execute(
             select(AutoResponseRule).where(
                 AutoResponseRule.org_id == org_id,
                 AutoResponseRule.avito_account_id == account_id,
                 AutoResponseRule.is_active.is_(True),
-                AutoResponseRule.avito_item_id.is_(None),
+                AutoResponseRule.avito_item_ids.is_(None),
             )
         )
         return result.scalar_one_or_none()

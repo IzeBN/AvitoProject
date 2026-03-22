@@ -36,6 +36,6 @@ export const avitoAccountsApi = {
 
   refreshBalance: (id: string) =>
     apiClient
-      .post<{ balance: number }>(`/avito-accounts/${id}/refresh-balance`)
+      .get<{ balance: number }>(`/avito-accounts/${id}/balance`)
       .then(r => r.data),
 }

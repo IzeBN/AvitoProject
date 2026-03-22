@@ -130,7 +130,8 @@ async def create_auto_rule(
     rule = AutoResponseRule(
         org_id=current_user.org_id,
         avito_account_id=body.avito_account_id,
-        avito_item_id=body.avito_item_id,
+        avito_item_ids=body.avito_item_ids,
+        message=body.message,
         auto_type=body.auto_type,
         is_active=body.is_active,
     )
@@ -151,8 +152,10 @@ async def patch_auto_rule(
     if rule is None:
         raise HTTPException(status_code=404, detail="Правило не найдено")
 
-    if body.avito_item_id is not None:
-        rule.avito_item_id = body.avito_item_id
+    if body.avito_item_ids is not None:
+        rule.avito_item_ids = body.avito_item_ids
+    if body.message is not None:
+        rule.message = body.message
     if body.auto_type is not None:
         rule.auto_type = body.auto_type
     if body.is_active is not None:

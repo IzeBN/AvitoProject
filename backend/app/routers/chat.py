@@ -550,12 +550,27 @@ async def mark_chat_read(
 )
 async def legacy_chat_list(
     request: Request,
-    service: Annotated[ChatService, Depends(_get_chat_service)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
     _current_user: Annotated[User, Depends(get_current_user)],
+    search: str | None = Query(default=None, max_length=255),
+    has_unread: bool | None = Query(default=None),
+    avito_account_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    per_page: int = Query(default=50, ge=1, le=200),
 ) -> ChatListResponse:
-    return await service.get_chat_list(request, page, page_size)
+    # Переиспользуем логику из chat_list
+    return await chat_list(
+        request=request,
+        db=db,
+        redis=redis,
+        _current_user=_current_user,
+        search=search,
+        has_unread=has_unread,
+        avito_account_id=avito_account_id,
+        page=page,
+        per_page=per_page,
+    )
 
 
 @router.get(

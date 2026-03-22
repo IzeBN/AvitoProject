@@ -4,7 +4,8 @@ export interface AutoResponseRule {
   id: string
   avito_account_id: string
   avito_account_name: string | null
-  avito_item_id: number | null
+  avito_item_ids: number[] | null
+  message: string | null
   auto_type: 'on_message' | 'on_response' | null
   is_active: boolean
 }
@@ -34,11 +35,12 @@ export const autoResponseApi = {
 
   createRule: (data: {
     avito_account_id: string
-    avito_item_id?: number
+    avito_item_ids?: number[]
+    message?: string
     auto_type?: string
   }) => apiClient.post<AutoResponseRule>('/messaging/auto-response', data).then(r => r.data),
 
-  updateRule: (id: string, data: { is_active?: boolean; auto_type?: string }) =>
+  updateRule: (id: string, data: { is_active?: boolean; auto_type?: string; message?: string; avito_item_ids?: number[] }) =>
     apiClient
       .patch<AutoResponseRule>(`/messaging/auto-response/${id}`, data)
       .then(r => r.data),
